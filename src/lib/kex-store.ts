@@ -6,7 +6,10 @@ import {
   TOURNAMENTS,
   computeStreak,
   currentTournamentIndex,
+  cyclesSinceAnchor,
+  tournamentIndexForCycle,
   tournamentWindow,
+  tournamentWindowForCycle,
   type DifficultyId,
   type Exercise,
 } from "./kex-data";
@@ -133,9 +136,14 @@ export function difficultyFromId(id: DifficultyId) {
 /* ------- Leaderboards computed from all users' logs ------- */
 export type LeaderRow = { user_id: string; username: string; score: number; tieBreak: number };
 
-export async function fetchLeaderboard(tournamentIdx: number): Promise<LeaderRow[]> {
-  const t = TOURNAMENTS[tournamentIdx];
-  const { start, end } = tournamentWindow(tournamentIdx);
+/**
+ * Fetch a leaderboard for a given tournament CYCLE (0-based since the anchor).
+ * Cycle N maps to tournament def index `N % TOURNAMENTS.length`.
+ */
+export async function fetchLeaderboard(cycle: number): Promise<LeaderRow[]> {
+  const tIdx = tournamentIndexForCycle(cycle);
+  const t = TOURNAMENTS[tIdx];
+  const { start, end } = tournamentWindowForCycle(cycle);
   const { data: profiles } = await supabase.from("profiles").select("id, username");
   const profMap = new Map<string, string>((profiles ?? []).map((p) => [p.id, p.username]));
 
@@ -156,71 +164,99 @@ export async function fetchLeaderboard(tournamentIdx: number): Promise<LeaderRow
 
   const rows = (logs ?? []) as unknown as WorkoutLogRow[];
 
-  if (t.scoring === "pullup_workouts") {
-    for (const l of rows) {
-      const hasPull = (l.exercises || []).some((e) => {
-        const m = ALL_EXERCISES[e.id.split(".")[1]];
-        return m?.isPullup;
-      });
-      if (hasPull) bump(l.user_id, 1, l.difficulty);
+  const isFullWorkout = (l: WorkoutLogRow) => !l.is_custom; // pre-picked routines only for tournament-eligibility scoring
+  void isFullWorkout;
+
+  switch (t.scoring) {
+    case "pullup_reps":
+      for (const l of rows) bump(l.user_id, l.pullup_reps || 0, l.difficulty);
+      break;
+    case "plank_seconds":
+      for (const l of rows) bump(l.user_id, l.plank_seconds || 0, l.difficulty);
+      break;
+    case "leg_workouts":
+      for (const l of rows) if (l.category === "legs") bump(l.user_id, 1, l.difficulty);
+      break;
+    case "core_workouts":
+      for (const l of rows) if (l.category === "core") bump(l.user_id, 1, l.difficulty);
+      break;
+    case "upper_workouts":
+      for (const l of rows) if (l.category === "upper") bump(l.user_id, 1, l.difficulty);
+      break;
+    case "soccer_workouts":
+      for (const l of rows) if (l.category === "soccer") bump(l.user_id, 1, l.difficulty);
+      break;
+    case "total_workouts":
+      for (const l of rows) bump(l.user_id, 1, l.difficulty);
+      break;
+    case "cardio_minutes": {
+      for (const l of rows) {
+        let mins = 0;
+        for (const item of l.exercises || []) {
+          if (!item.id.startsWith("cardio.")) continue;
+          if (item.unit === "min") mins += item.amount;
+          else if (item.unit === "sec") mins += item.amount / 60;
+        }
+        if (mins > 0) bump(l.user_id, Math.round(mins), l.difficulty);
+      }
+      break;
     }
-  } else if (t.scoring === "plank_seconds") {
-    for (const l of rows) bump(l.user_id, l.plank_seconds || 0, l.difficulty);
-  } else if (t.scoring === "leg_workouts") {
-    for (const l of rows) if (l.category === "legs") bump(l.user_id, 1, l.difficulty);
-  } else if (t.scoring === "workouts_in_a_day") {
-    // max workouts in a single day per user
-    const perUserDay = new Map<string, Map<string, { count: number; maxDiff: number }>>();
-    for (const l of rows) {
-      const d = new Date(l.completed_at);
-      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-      let byDay = perUserDay.get(l.user_id);
-      if (!byDay) { byDay = new Map(); perUserDay.set(l.user_id, byDay); }
-      const cur = byDay.get(key) ?? { count: 0, maxDiff: 0 };
-      cur.count += 1; cur.maxDiff = Math.max(cur.maxDiff, l.difficulty);
-      byDay.set(key, cur);
+    case "workouts_in_a_day": {
+      const perUserDay = new Map<string, Map<string, { count: number; maxDiff: number }>>();
+      for (const l of rows) {
+        const d = new Date(l.completed_at);
+        const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+        let byDay = perUserDay.get(l.user_id);
+        if (!byDay) { byDay = new Map(); perUserDay.set(l.user_id, byDay); }
+        const cur = byDay.get(key) ?? { count: 0, maxDiff: 0 };
+        cur.count += 1; cur.maxDiff = Math.max(cur.maxDiff, l.difficulty);
+        byDay.set(key, cur);
+      }
+      for (const [uid, byDay] of perUserDay) {
+        let best = { count: 0, maxDiff: 0 };
+        for (const v of byDay.values()) if (v.count > best.count || (v.count === best.count && v.maxDiff > best.maxDiff)) best = v;
+        perUser.set(uid, { score: best.count, maxDiff: best.maxDiff });
+      }
+      break;
     }
-    for (const [uid, byDay] of perUserDay) {
-      let best = { count: 0, maxDiff: 0 };
-      for (const v of byDay.values()) if (v.count > best.count || (v.count === best.count && v.maxDiff > best.maxDiff)) best = v;
-      perUser.set(uid, { score: best.count, maxDiff: best.maxDiff });
-    }
-  } else if (t.scoring === "longest_streak") {
-    // for each user compute streak within window
-    const perUserDates = new Map<string, Set<string>>();
-    const perUserMaxDiff = new Map<string, number>();
-    for (const l of rows) {
-      const d = new Date(l.completed_at);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      let s = perUserDates.get(l.user_id);
-      if (!s) { s = new Set(); perUserDates.set(l.user_id, s); }
-      s.add(key);
-      perUserMaxDiff.set(l.user_id, Math.max(perUserMaxDiff.get(l.user_id) ?? 0, l.difficulty));
-    }
-    for (const [uid, dates] of perUserDates) {
-      const streak = computeStreak(dates, new Date(Math.min(Date.now(), end.getTime() - 1)));
-      perUser.set(uid, { score: streak, maxDiff: perUserMaxDiff.get(uid) ?? 0 });
+    case "longest_streak": {
+      const perUserDates = new Map<string, Set<string>>();
+      const perUserMaxDiff = new Map<string, number>();
+      for (const l of rows) {
+        const d = new Date(l.completed_at);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        let s = perUserDates.get(l.user_id);
+        if (!s) { s = new Set(); perUserDates.set(l.user_id, s); }
+        s.add(key);
+        perUserMaxDiff.set(l.user_id, Math.max(perUserMaxDiff.get(l.user_id) ?? 0, l.difficulty));
+      }
+      for (const [uid, dates] of perUserDates) {
+        const streak = computeStreak(dates, new Date(Math.min(Date.now(), end.getTime() - 1)));
+        perUser.set(uid, { score: streak, maxDiff: perUserMaxDiff.get(uid) ?? 0 });
+      }
+      break;
     }
   }
 
   // Every user who has ever signed up appears — score defaults to 0.
-  for (const [uid, uname] of profMap) if (!perUser.has(uid)) perUser.set(uid, { score: 0, maxDiff: 0 });
+  for (const [uid] of profMap) if (!perUser.has(uid)) perUser.set(uid, { score: 0, maxDiff: 0 });
 
   return Array.from(perUser.entries())
     .map(([uid, v]) => ({ user_id: uid, username: profMap.get(uid) ?? "unknown", score: v.score, tieBreak: v.maxDiff }))
     .sort((a, b) => b.score - a.score || b.tieBreak - a.tieBreak || a.username.localeCompare(b.username));
 }
 
-export function useLeaderboard(tournamentIdx: number, refreshKey = 0) {
+export function useLeaderboard(cycle: number, refreshKey = 0) {
   const [rows, setRows] = useState<LeaderRow[] | null>(null);
   useEffect(() => {
     let cancelled = false;
     setRows(null);
-    fetchLeaderboard(tournamentIdx).then((r) => { if (!cancelled) setRows(r); });
+    fetchLeaderboard(cycle).then((r) => { if (!cancelled) setRows(r); });
     return () => { cancelled = true; };
-  }, [tournamentIdx, refreshKey]);
+  }, [cycle, refreshKey]);
   return rows;
 }
+
 
 /** Trophy unlock computation. */
 export function computeUnlocked(opts: {

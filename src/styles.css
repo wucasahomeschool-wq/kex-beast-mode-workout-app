@@ -102,3 +102,35 @@
   50% { filter: drop-shadow(0 0 40px var(--primary)); }
 }
 @utility animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+
+/* Mommy's Special Course — light green theme scoped by .mommy-theme */
+.mommy-theme {
+  --mommy-primary: oklch(0.62 0.15 145);
+  --mommy-accent: oklch(0.7 0.12 140);
+  --mommy-card: oklch(0.97 0.03 145);
+  --mommy-bg: oklch(0.98 0.02 145);
+  --mommy-fg: oklch(0.22 0.05 145);
+  --mommy-muted: oklch(0.5 0.03 145);
+  --mommy-border: oklch(0.85 0.05 145);
+  --mommy-danger: oklch(0.6 0.2 20);
+  background: var(--mommy-bg);
+  color: var(--mommy-fg);
+}
+.mommy-theme .text-mommy-primary { color: var(--mommy-primary); }
+.mommy-theme .text-mommy-fg { color: var(--mommy-fg); }
+.mommy-theme .text-mommy-muted { color: var(--mommy-muted); }
+.mommy-theme .text-mommy-danger { color: var(--mommy-danger); }
+.mommy-theme .bg-mommy-primary { background: var(--mommy-primary); }
+.mommy-theme .bg-mommy-accent { background: var(--mommy-accent); }
+.mommy-theme .bg-mommy-card { background: var(--mommy-card); }
+.mommy-theme .bg-mommy-danger { background: var(--mommy-danger); }
+.mommy-theme .border-mommy-primary { border-color: var(--mommy-primary); }
+.mommy-theme .border-mommy-border { border-color: var(--mommy-border); }
+.mommy-theme .border-mommy-danger { border-color: var(--mommy-danger); }
+.mommy-theme .shadow-mommy { box-shadow: 6px 6px 0 0 var(--mommy-border); }
+.mommy-theme .hover\:text-mommy-primary:hover { color: var(--mommy-primary); }
+.mommy-theme .bg-mommy-primary\/10 { background: color-mix(in oklch, var(--mommy-primary) 10%, transparent); }
+.mommy-theme .bg-mommy-accent\/10 { background: color-mix(in oklch, var(--mommy-accent) 10%, transparent); }
+.mommy-theme .bg-mommy-danger\/10 { background: color-mix(in oklch, var(--mommy-danger) 10%, transparent); }
+.mommy-theme .bg-mommy-muted\/30 { background: color-mix(in oklch, var(--mommy-muted) 30%, transparent); }
+

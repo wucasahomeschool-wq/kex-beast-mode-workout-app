@@ -1,0 +1,25 @@
+{
+  "name": "GET RIPPED WITH KEX",
+  "short_name": "KEX",
+  "description": "The most boombakraxin workout app on planet earth.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a0a2e",
+  "theme_color": "#ffe000",
+  "icons": [
+    {
+      "src": "/__l5e/assets-v1/9587b530-c4c4-4be7-8793-d93d8c0cdf31/kex-icon.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/__l5e/assets-v1/9587b530-c4c4-4be7-8793-d93d8c0cdf31/kex-icon.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}

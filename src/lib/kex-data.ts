@@ -1,7 +1,7 @@
 // Static data for the Kex app: difficulties, exercises, routines, tournaments.
 
 export type DifficultyId = 0 | 1 | 2 | 3 | 4 | 5;
-export type Category = "core" | "upper" | "legs";
+export type Category = "core" | "upper" | "legs" | "cardio" | "soccer";
 
 export const DIFFICULTIES: {
   id: DifficultyId;
@@ -27,9 +27,15 @@ export type Exercise = {
   needsPullupBar?: boolean;
   isPlank?: boolean;
   isPullup?: boolean;
+  /** Muscle groups this exercise targets — used to pick appropriate stretches. */
+  muscles?: MuscleGroup[];
+  /** For Cardio: whether it's an outdoor exercise (i.e. can't be done on the treadmill under 7 mph). */
+  outdoorOnly?: boolean;
   how: string[];
   kexNote: string;
 };
+
+export type MuscleGroup = "abs" | "obliques" | "chest" | "shoulders" | "back" | "arms" | "hips" | "quads" | "hamstrings" | "glutes" | "calves" | "fullBody";
 
 function ex(id: string, e: Omit<Exercise, "id">): Exercise {
   return { id, ...e };
@@ -535,7 +541,179 @@ export const LEGS: Record<string, Exercise> = {
   }),
 };
 
-export const ALL_EXERCISES: Record<string, Exercise> = { ...CORE, ...UPPER, ...LEGS };
+/* ---------------- CARDIO ---------------- */
+export const CARDIO: Record<string, Exercise> = {
+  brisk: ex("cardio.brisk", {
+    name: "Brisk Walk", emoji: "🚶", base: 5, unit: "min", muscles: ["fullBody", "calves"],
+    how: ["Treadmill at 3.5–4.0 mph.", "Incline at 2.", "Stay tall, arms swinging."],
+    kexNote: "Kex prefers this while lecturing you about form.",
+  }),
+  powerWalk: ex("cardio.powerWalk", {
+    name: "Incline Power Walk", emoji: "⛰️", base: 5, unit: "min", muscles: ["glutes", "calves"],
+    how: ["Treadmill at 3.5 mph.", "Incline at 8–10 (spicy).", "Do NOT hold the handrails."],
+    kexNote: "Kex says the treadmill is a mountain and you are a goat.",
+  }),
+  easyJog: ex("cardio.easyJog", {
+    name: "Easy Jog", emoji: "🏃", base: 6, unit: "min", muscles: ["quads", "calves"],
+    how: ["Treadmill at 5.0 mph.", "Incline at 1.", "Breathe through your nose if you can."],
+    kexNote: "Zone 2. Kex learned about heart-rate zones on TikTok.",
+  }),
+  tempoJog: ex("cardio.tempoJog", {
+    name: "Tempo Jog", emoji: "💨", base: 4, unit: "min", muscles: ["quads", "calves"],
+    how: ["Treadmill at 6.0 mph.", "Incline at 1.", "You should be able to say 3-word sentences only."],
+    kexNote: "Kex times this with his cartoon watch. It doesn't work.",
+  }),
+  hillClimb: ex("cardio.hillClimb", {
+    name: "Hill Climb Intervals", emoji: "🧗", base: 5, unit: "min", muscles: ["glutes", "quads", "calves"],
+    how: ["Treadmill at 4.0 mph.", "Alternate 30 sec incline 10 / 30 sec incline 4.", "Try not to fall off the back."],
+    kexNote: "Kex has fallen off the back of a treadmill exactly once. He learned.",
+  }),
+  hardRun: ex("cardio.hardRun", {
+    name: "Hard Run", emoji: "🔥", base: 3, unit: "min", muscles: ["quads", "calves"],
+    how: ["Treadmill at 6.8 mph.", "Incline at 1–2.", "Push!"],
+    kexNote: "Kex will judge you if you jump off early.",
+  }),
+  recoveryWalk: ex("cardio.recoveryWalk", {
+    name: "Recovery Walk", emoji: "🌊", base: 3, unit: "min", muscles: ["fullBody"],
+    how: ["Treadmill at 3.0 mph.", "Incline at 0.", "Breathe. Water. Alive."],
+    kexNote: "Even Kex admits recovery is a real thing. Sometimes.",
+  }),
+  sprintInterval: ex("cardio.sprintInterval", {
+    name: "Outdoor Sprint Intervals", emoji: "⚡", base: 20, unit: "sec", muscles: ["quads", "hamstrings"], outdoorOnly: true,
+    how: ["OUTDOOR EXERCISE — you'll be going faster than 7 mph!", "Find a straight, flat stretch.", "Sprint all-out for the time, then rest twice as long.", "Repeat 4–6 times.", "If stuck on a treadmill, replace with 'Hard Run' at 6.8 mph."],
+    kexNote: "Kex clocked a 12 mph sprint once. His mom timed him.",
+  }),
+  jumpRope: ex("cardio.jumpRope", {
+    name: "Jump Rope", emoji: "🪢", base: 90, unit: "sec", muscles: ["calves", "shoulders"],
+    how: ["Grab a jump rope (or pretend).", "Jump lightly on the balls of your feet.", "Try single-unders, then attempt a double-under and fail."],
+    kexNote: "Kex's record: 8 double-unders in a row before tripping into the couch.",
+  }),
+  marchInPlace: ex("cardio.marchInPlace", {
+    name: "High-Knee March", emoji: "🚶‍♂️", base: 60, unit: "sec", muscles: ["hips", "quads"],
+    how: ["Stand tall.", "Drive knees up to hip height, alternating.", "Pump your arms."],
+    kexNote: "Kex thinks this looks silly. He is correct.",
+  }),
+};
+
+/* ---------------- SOCCER ---------------- */
+export const SOCCER: Record<string, Exercise> = {
+  coneDribble: ex("soccer.coneDribble", {
+    name: "Cone Weave Dribbling", emoji: "🥅", base: 90, unit: "sec", muscles: ["fullBody"],
+    how: ["Set 5 cones in a straight line, ~3 feet apart.", "Dribble in and out of the cones using inside/outside of foot.", "Go back and forth as many times as you can."],
+    kexNote: "Kex weaves so fast the cones fall over from wind.",
+  }),
+  wallPasses: ex("soccer.wallPasses", {
+    name: "Rebound Net One-Touch", emoji: "🎯", base: 30, unit: "reps",
+    how: ["Stand ~10 feet from the rebound net.", "Pass with the inside of your foot.", "First-touch return — no double-touch.", "Alternate feet."],
+    kexNote: "Kex once did 100 in a row while eating an apple. Probably.",
+  }),
+  toeTaps: ex("soccer.toeTaps", {
+    name: "Toe Taps on Ball", emoji: "⚽", base: 45, unit: "sec", muscles: ["calves"],
+    how: ["Place the ball in front of you.", "Rapidly tap the top of the ball with alternating feet.", "Stay on the balls of your feet."],
+    kexNote: "Kex's toe-tap PR is 210 taps in 30 seconds. Unverified.",
+  }),
+  slalomSprint: ex("soccer.slalomSprint", {
+    name: "Slalom Sprint (no ball)", emoji: "🏁", base: 8, unit: "reps",
+    how: ["Set 4 cones in a zigzag.", "Sprint through, cutting hard at each cone.", "Walk back. Repeat."],
+    kexNote: "Kex plants his foot so hard he grows moss on his heel.",
+  }),
+  laddersFeet: ex("soccer.laddersFeet", {
+    name: "Fast Feet Ladder", emoji: "🪜", base: 45, unit: "sec", muscles: ["calves", "quads"],
+    how: ["Use tape or imaginary rungs — 6 spaces.", "Two feet in each square as fast as possible.", "Down the ladder, jog back, repeat."],
+    kexNote: "Kex's feet moved so fast the turf caught fire. Legend.",
+  }),
+  scissorSkill: ex("soccer.scissorSkill", {
+    name: "Scissor Skill Move Reps", emoji: "✂️", base: 20, unit: "reps",
+    how: ["Ball at your feet.", "Fake with your right foot going over the ball.", "Take it away with the outside of your left foot.", "Alternate sides."],
+    kexNote: "Kex learned this from watching Ronaldinho. Not really.",
+  }),
+  finishingPug: ex("soccer.finishingPug", {
+    name: "Pug Goal Finishing", emoji: "🎯", base: 12, unit: "reps",
+    how: ["Place ball 8 feet from the pug goal.", "Take a two-step approach and strike low and hard.", "Alternate feet."],
+    kexNote: "Kex says: pick a corner BEFORE you strike, or the ball picks it for you.",
+  }),
+  laserPasses: ex("soccer.laserPasses", {
+    name: "Laser Passes to Rebounder", emoji: "🚀", base: 20, unit: "reps",
+    how: ["Stand 12 feet from the rebound net.", "Drive a firm laces pass into it.", "Control the return with a single touch."],
+    kexNote: "Kex hits the rebounder so hard it filed a complaint.",
+  }),
+  turnAndGo: ex("soccer.turnAndGo", {
+    name: "Turn & Explode", emoji: "🔄", base: 10, unit: "reps",
+    how: ["Ball at feet, facing away from a cone.", "Receive an imaginary pass, turn 180°, and sprint 5 yards.", "Walk back. Repeat."],
+    kexNote: "Kex says a good turn is 90% attitude.",
+  }),
+  wallVolleys: ex("soccer.wallVolleys", {
+    name: "Rebound Volley Practice", emoji: "🎪", base: 20, unit: "reps",
+    how: ["Toss the ball at the rebound net so it comes back at chest/thigh height.", "Volley it back with a single clean strike.", "Alternate feet."],
+    kexNote: "Kex volleys with both feet AND his forehead. Not at once.",
+  }),
+  keepyUps: ex("soccer.keepyUps", {
+    name: "Keepy-Ups (Juggling)", emoji: "🤹", base: 60, unit: "sec",
+    how: ["Bounce the ball on your foot, then knee, then thigh.", "Try to keep it in the air the whole time.", "Restart when it drops. It'll drop."],
+    kexNote: "Kex's record: 47. His little brother's record: 3 (and still amazing).",
+  }),
+};
+
+/* ---------------- STRETCHES ---------------- */
+export const STRETCHES: Record<string, Exercise> = {
+  hipFlexor: ex("stretch.hipFlexor", {
+    name: "Hip Flexor Stretch", emoji: "🧘", base: 30, unit: "sec", muscles: ["hips"],
+    how: ["Kneel on one knee, other foot in front.", "Push your hips gently forward.", "Feel the stretch in the front of the hip. Switch sides."],
+    kexNote: "Kex says tight hips = angry Kex.",
+  }),
+  hamstring: ex("stretch.hamstring", {
+    name: "Hamstring Stretch", emoji: "🦵", base: 30, unit: "sec", muscles: ["hamstrings"],
+    how: ["Sit with one leg straight, the other tucked in.", "Reach toward your toes on the straight leg.", "Breathe. Switch."],
+    kexNote: "You will not touch your toes. Reach anyway.",
+  }),
+  quad: ex("stretch.quad", {
+    name: "Quad Stretch", emoji: "🕴️", base: 30, unit: "sec", muscles: ["quads"],
+    how: ["Stand tall (hold a wall if needed).", "Pull one heel toward your butt.", "Keep knees together. Switch."],
+    kexNote: "Kex balances during this while eating a sandwich.",
+  }),
+  cobra: ex("stretch.cobra", {
+    name: "Cobra Stretch", emoji: "🐍", base: 25, unit: "sec", muscles: ["abs"],
+    how: ["Lie face down, hands under shoulders.", "Push chest up, keeping hips on the floor.", "Look up gently."],
+    kexNote: "Great after abs. Very hissy.",
+  }),
+  childs: ex("stretch.childs", {
+    name: "Child's Pose", emoji: "🙇", base: 40, unit: "sec", muscles: ["back", "shoulders"],
+    how: ["Kneel with big toes together, knees wide.", "Sit back on your heels and reach arms forward.", "Rest forehead on the floor."],
+    kexNote: "Kex naps here sometimes.",
+  }),
+  doorwayChest: ex("stretch.doorwayChest", {
+    name: "Doorway Chest Stretch", emoji: "🚪", base: 25, unit: "sec", muscles: ["chest", "shoulders"],
+    how: ["Stand in a doorway.", "Place your forearms on the frame, elbows at shoulder height.", "Step one foot forward until you feel a stretch."],
+    kexNote: "Great after push-ups. Kex uses every doorway he finds.",
+  }),
+  tricepOverhead: ex("stretch.tricep", {
+    name: "Overhead Tricep Stretch", emoji: "💪", base: 20, unit: "sec", muscles: ["arms"],
+    how: ["Raise one arm overhead.", "Bend elbow so your hand touches your upper back.", "Use the other hand to gently pull the elbow. Switch."],
+    kexNote: "You just did dips. Give the triceps a hug.",
+  }),
+  shoulderCross: ex("stretch.shoulderCross", {
+    name: "Cross-Body Shoulder", emoji: "🤝", base: 20, unit: "sec", muscles: ["shoulders", "back"],
+    how: ["Bring one arm straight across your body.", "Use the other arm to gently pull it in.", "Switch sides."],
+    kexNote: "Feels weird. Is good.",
+  }),
+  gluteFig4: ex("stretch.gluteFig4", {
+    name: "Figure-4 Glute Stretch", emoji: "4️⃣", base: 30, unit: "sec", muscles: ["glutes", "hips"],
+    how: ["Lie on your back, one ankle on the opposite knee.", "Pull the bottom leg toward you.", "Switch sides."],
+    kexNote: "Kex uses this after leg day. All 47 leg days per week.",
+  }),
+  calfStretch: ex("stretch.calf", {
+    name: "Calf Stretch", emoji: "🐄", base: 25, unit: "sec", muscles: ["calves"],
+    how: ["Stand facing a wall, hands on wall.", "Step one foot back, keep heel down.", "Feel the calf stretch. Switch."],
+    kexNote: "Calves are shy. Stretch them anyway.",
+  }),
+  cat: ex("stretch.cat", {
+    name: "Cat-Cow", emoji: "🐈", base: 30, unit: "sec", muscles: ["back", "abs"],
+    how: ["On hands and knees.", "Arch your back up (cat), then dip down (cow).", "Flow with your breath."],
+    kexNote: "Kex does this. So does an actual cat named Steve.",
+  }),
+};
+
+export const ALL_EXERCISES: Record<string, Exercise> = { ...CORE, ...UPPER, ...LEGS, ...CARDIO, ...SOCCER, ...STRETCHES };
 export function exerciseById(id: string): Exercise | undefined {
   return ALL_EXERCISES[id.split(".")[1] as string] ?? Object.values(ALL_EXERCISES).find(e => e.id === id);
 }
@@ -616,72 +794,197 @@ export const WORKOUTS: Record<
         exerciseIds: [LEGS.frog.id, LEGS.curtsy.id, LEGS.frog.id, LEGS.jumpSquat.id, LEGS.sideLunge.id, LEGS.frog.id, LEGS.wallSit.id, LEGS.calfRaise.id] },
     ],
   },
+  cardio: {
+    title: "CARDIO COURSE",
+    subtitle: "Turn the treadmill into a torture device",
+    routines: [
+      { name: "TREADMILL LADDER", flavor: "Up we go. Down we go. Up we go.",
+        exerciseIds: [CARDIO.brisk.id, CARDIO.easyJog.id, CARDIO.tempoJog.id, CARDIO.hardRun.id, CARDIO.tempoJog.id, CARDIO.easyJog.id, CARDIO.recoveryWalk.id] },
+      { name: "HILL DESTROYER", flavor: "Kex heard about hills once and never got over it.",
+        exerciseIds: [CARDIO.brisk.id, CARDIO.powerWalk.id, CARDIO.hillClimb.id, CARDIO.powerWalk.id, CARDIO.hillClimb.id, CARDIO.recoveryWalk.id] },
+      { name: "SPRINT SANDWICH", flavor: "Bread of jog, filling of sprint.",
+        exerciseIds: [CARDIO.easyJog.id, CARDIO.sprintInterval.id, CARDIO.easyJog.id, CARDIO.sprintInterval.id, CARDIO.easyJog.id, CARDIO.recoveryWalk.id] },
+      { name: "ROPE-A-DOPE", flavor: "Jump rope in disguise as a workout.",
+        exerciseIds: [CARDIO.marchInPlace.id, CARDIO.jumpRope.id, CARDIO.marchInPlace.id, CARDIO.jumpRope.id, CARDIO.jumpRope.id, CARDIO.recoveryWalk.id] },
+      { name: "SLOW BURN", flavor: "Kex says the tortoise wins. Sometimes.",
+        exerciseIds: [CARDIO.brisk.id, CARDIO.powerWalk.id, CARDIO.easyJog.id, CARDIO.powerWalk.id, CARDIO.recoveryWalk.id] },
+    ],
+  },
+  soccer: {
+    title: "SOCCER TRAINING",
+    subtitle: "Garage-field-approved drills",
+    routines: [
+      { name: "FIRST TOUCH FIESTA", flavor: "Because everyone at the park has a bad first touch.",
+        exerciseIds: [SOCCER.toeTaps.id, SOCCER.wallPasses.id, SOCCER.wallVolleys.id, SOCCER.laserPasses.id, SOCCER.turnAndGo.id, SOCCER.keepyUps.id] },
+      { name: "GARAGE DRIBBLE CLINIC", flavor: "Cones are our friends. Cones are our enemies.",
+        exerciseIds: [SOCCER.coneDribble.id, SOCCER.scissorSkill.id, SOCCER.laddersFeet.id, SOCCER.coneDribble.id, SOCCER.slalomSprint.id, SOCCER.keepyUps.id] },
+      { name: "PUG-GOAL SHOOTING GALLERY", flavor: "Little goals, big finishes.",
+        exerciseIds: [SOCCER.toeTaps.id, SOCCER.laserPasses.id, SOCCER.finishingPug.id, SOCCER.turnAndGo.id, SOCCER.finishingPug.id, SOCCER.wallVolleys.id] },
+      { name: "FAST FEET FEST", flavor: "Kex's little brother is watching. Impress him.",
+        exerciseIds: [SOCCER.laddersFeet.id, SOCCER.toeTaps.id, SOCCER.slalomSprint.id, SOCCER.scissorSkill.id, SOCCER.laddersFeet.id, SOCCER.keepyUps.id] },
+      { name: "ONE-TOUCH MASTERCLASS", flavor: "Fewer touches. More style.",
+        exerciseIds: [SOCCER.wallPasses.id, SOCCER.laserPasses.id, SOCCER.wallVolleys.id, SOCCER.wallPasses.id, SOCCER.turnAndGo.id, SOCCER.finishingPug.id] },
+    ],
+  },
 };
 
+/** Map a workout's exercises to a set of stretch exercises that cool down the muscles used. */
+export function stretchesForExercises(exerciseIds: string[]): Exercise[] {
+  const groups = new Set<MuscleGroup>();
+  for (const id of exerciseIds) {
+    const ex = ALL_EXERCISES[id.split(".")[1]];
+    if (ex?.muscles) for (const m of ex.muscles) groups.add(m);
+    // Infer sensible defaults if muscle tags are missing:
+    if (!ex?.muscles) {
+      if (id.startsWith("core")) { groups.add("abs"); groups.add("obliques"); }
+      else if (id.startsWith("upper")) { groups.add("chest"); groups.add("shoulders"); groups.add("arms"); groups.add("back"); }
+      else if (id.startsWith("legs")) { groups.add("quads"); groups.add("hamstrings"); groups.add("glutes"); groups.add("calves"); }
+      else if (id.startsWith("cardio")) { groups.add("quads"); groups.add("calves"); }
+      else if (id.startsWith("soccer")) { groups.add("quads"); groups.add("calves"); groups.add("hips"); }
+    }
+  }
+  const chosen: Exercise[] = [];
+  const pick = (s: Exercise) => { if (!chosen.some((c) => c.id === s.id)) chosen.push(s); };
+  if (groups.has("abs") || groups.has("obliques")) { pick(STRETCHES.cobra); pick(STRETCHES.cat); }
+  if (groups.has("chest")) pick(STRETCHES.doorwayChest);
+  if (groups.has("shoulders")) pick(STRETCHES.shoulderCross);
+  if (groups.has("arms")) pick(STRETCHES.tricepOverhead);
+  if (groups.has("back")) pick(STRETCHES.childs);
+  if (groups.has("hips")) pick(STRETCHES.hipFlexor);
+  if (groups.has("glutes")) pick(STRETCHES.gluteFig4);
+  if (groups.has("hamstrings")) pick(STRETCHES.hamstring);
+  if (groups.has("quads")) pick(STRETCHES.quad);
+  if (groups.has("calves")) pick(STRETCHES.calfStretch);
+  if (chosen.length === 0) { pick(STRETCHES.childs); pick(STRETCHES.cat); }
+  return chosen.slice(0, 5);
+}
+
+
 /* ---------------- TOURNAMENTS ---------------- */
-// Anchor: Monday July 6, 2026. Every 2 weeks a new challenge cycles through the list.
-export const TOURNAMENT_ANCHOR = new Date("2026-07-06T00:00:00Z").getTime();
+// Anchor: Monday July 20, 2026 — pull-up tournament RESTARTED with reps-based scoring.
+// A new challenge cycles in every 2 weeks. Users only ever see past + current, never upcoming.
+export const TOURNAMENT_ANCHOR = new Date("2026-07-20T00:00:00Z").getTime();
 export const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+
+export type TournamentScoring =
+  | "pullup_reps"
+  | "plank_seconds"
+  | "longest_streak"
+  | "workouts_in_a_day"
+  | "leg_workouts"
+  | "core_workouts"
+  | "total_workouts"
+  | "upper_workouts"
+  | "cardio_minutes"
+  | "soccer_workouts";
 
 export type TournamentDef = {
   id: string;
   name: string;
   description: string;
-  scoring: "pullup_workouts" | "plank_seconds" | "longest_streak" | "workouts_in_a_day" | "leg_workouts";
+  scoring: TournamentScoring;
   scoreLabel: string;
 };
 
 export const TOURNAMENTS: TournamentDef[] = [
   {
-    id: "impossible-pullup",
+    id: "impossible-pullup-reps",
     name: "KEX'S IMPOSSIBLE PULL-UP CHALLENGE",
-    description: "The user who completes the most pull-up workouts (any routine containing pull-ups) wins. Kex will not congratulate the winner. He never does.",
-    scoring: "pullup_workouts",
-    scoreLabel: "pull-up workouts",
+    description: "The user who logs the most pull-up REPS during this tournament wins. Kex has already done more than you. He is not sorry.",
+    scoring: "pullup_reps",
+    scoreLabel: "pull-up reps",
   },
   {
     id: "absolute-abdominal-agony",
     name: "THE ABSOLUTE ABDOMINAL AGONY CHALLENGE",
-    description: "Whoever logs the most plank seconds wins. NOTE: you cannot only do planks — you must complete entire workouts. If your workout doesn't include a plank? You'll just have to DO ANOTHER ONE!! ☠️",
+    description: "Whoever logs the most plank seconds during this tournament wins. NOTE: you cannot only do planks — you must complete entire workouts. If your workout doesn't include a plank? You'll just have to DO ANOTHER ONE!! ☠️",
     scoreLabel: "plank seconds",
     scoring: "plank_seconds",
   },
   {
     id: "kex-istancy",
     name: "THE KEX-ISTANCY CHALLENGE",
-    description: "The user with the longest streak at the end of the tournament wins. Sundays are rest days and don't break your streak.",
-    scoreLabel: "day streak",
+    description: "The user with the longest streak DURING THE TOURNAMENT wins. Your all-time streak is safe, but a fresh tournament streak starts now. Sundays are rest days and don't break it.",
+    scoreLabel: "day streak (this tournament)",
     scoring: "longest_streak",
   },
   {
     id: "kex-didnt-sit-on-couch",
     name: "THE 'KEX DIDN'T GET HIS MUSCLES BY SITTING ON THE COUCH BEING LAZY' CHALLENGE",
-    description: "Whoever completes the most workouts in a single day (during this challenge) wins.",
+    description: "Whoever completes the most workouts in a single day during this tournament wins.",
     scoreLabel: "workouts in one day",
     scoring: "workouts_in_a_day",
   },
   {
     id: "bulletproof-booty",
     name: "KEX'S BULLETPROOF BOOTY CHALLENGE",
-    description: "The user who completes the most leg workouts wins.",
+    description: "The user who completes the most leg workouts during this tournament wins.",
     scoreLabel: "leg workouts",
     scoring: "leg_workouts",
   },
+  {
+    id: "the-core-thing",
+    name: "THE 'GRATE CHEESE ON THESE ABS' CHALLENGE",
+    description: "Whoever completes the most CORE workouts during this tournament wins. Kex approves.",
+    scoreLabel: "core workouts",
+    scoring: "core_workouts",
+  },
+  {
+    id: "grand-hustle",
+    name: "THE KEX GRAND HUSTLE",
+    description: "Simplest scoring imaginable: whoever completes the most workouts (any kind) during this tournament wins.",
+    scoreLabel: "total workouts",
+    scoring: "total_workouts",
+  },
+  {
+    id: "arms-of-legend",
+    name: "ARMS OF KEX LEGEND",
+    description: "Whoever completes the most UPPER BODY workouts during this tournament wins. Kex is watching your delts.",
+    scoreLabel: "upper body workouts",
+    scoring: "upper_workouts",
+  },
+  {
+    id: "treadmill-crusher",
+    name: "THE TREADMILL CRUSHER",
+    description: "Whoever logs the most CARDIO minutes during this tournament wins. Sweat is currency.",
+    scoreLabel: "cardio minutes",
+    scoring: "cardio_minutes",
+  },
+  {
+    id: "garage-soccer-champ",
+    name: "GARAGE-FIELD SOCCER CHAMP",
+    description: "Whoever completes the most SOCCER workouts during this tournament wins. Cones fear you now.",
+    scoreLabel: "soccer workouts",
+    scoring: "soccer_workouts",
+  },
 ];
 
-export function currentTournamentIndex(now = Date.now()): number {
+/** How many total tournament cycles have elapsed since the anchor (including the current in-progress one). */
+export function cyclesSinceAnchor(now = Date.now()): number {
   const diff = Math.max(0, now - TOURNAMENT_ANCHOR);
-  return Math.floor(diff / TWO_WEEKS_MS) % TOURNAMENTS.length;
+  return Math.floor(diff / TWO_WEEKS_MS);
 }
 
-export function tournamentWindow(index: number, now = Date.now()) {
-  // find the start of the current cycle
-  const diff = Math.max(0, now - TOURNAMENT_ANCHOR);
-  const cyclesSinceAnchor = Math.floor(diff / TWO_WEEKS_MS);
-  // shift back to the passed index within the current rotation
-  const cycleStart = TOURNAMENT_ANCHOR + cyclesSinceAnchor * TWO_WEEKS_MS;
-  return { start: new Date(cycleStart), end: new Date(cycleStart + TWO_WEEKS_MS) };
+/** The tournament def index for a given cycle number (loops the list). */
+export function tournamentIndexForCycle(cycle: number): number {
+  return cycle % TOURNAMENTS.length;
 }
+
+export function currentTournamentIndex(now = Date.now()): number {
+  return tournamentIndexForCycle(cyclesSinceAnchor(now));
+}
+
+/** Absolute window for a given cycle number (0 = first cycle after the anchor). */
+export function tournamentWindowForCycle(cycle: number) {
+  const start = TOURNAMENT_ANCHOR + cycle * TWO_WEEKS_MS;
+  return { start: new Date(start), end: new Date(start + TWO_WEEKS_MS) };
+}
+
+/** Legacy: window for the CURRENT cycle showing this tournament def. */
+export function tournamentWindow(_index: number, now = Date.now()) {
+  return tournamentWindowForCycle(cyclesSinceAnchor(now));
+}
+
 
 /* ---------------- TROPHY DEFINITIONS ---------------- */
 export type Trophy = {

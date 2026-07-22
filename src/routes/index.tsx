@@ -1384,6 +1384,7 @@ function MommyWorkout({ userId, onExit, onDone }: { userId: string; onExit: () =
   }
 
   if (day.kind === "rest") {
+    // Rest days are completed from MommyHome directly; if we somehow land here, just bounce back.
     return (
       <div className="mommy-theme min-h-screen px-5 py-6">
         <div className="mx-auto max-w-md rounded-2xl border-4 border-mommy-primary bg-mommy-card p-6 text-center shadow-mommy">
@@ -1391,12 +1392,11 @@ function MommyWorkout({ userId, onExit, onDone }: { userId: string; onExit: () =
           <h1 className="mt-2 font-display text-4xl text-mommy-primary">REST DAY</h1>
           <p className="mt-2 text-mommy-fg/90">{day.note}</p>
           <button
-            onClick={() => { complete(); onDone(); }}
+            onClick={onDone}
             className="mt-6 w-full rounded-2xl bg-mommy-primary py-4 font-display text-2xl text-white shadow-mommy"
           >
-            MARK COMPLETE ✓
+            BACK TO PLAN
           </button>
-          <button onClick={onExit} className="mt-2 w-full font-condensed text-xs uppercase text-mommy-muted">Back</button>
         </div>
       </div>
     );
@@ -1411,16 +1411,17 @@ function MommyWorkout({ userId, onExit, onDone }: { userId: string; onExit: () =
           <div className="text-6xl">🌸</div>
           <h1 className="mt-2 font-display text-4xl text-mommy-primary">DAY {progress.currentDay} DONE</h1>
           <p className="mt-2 text-mommy-fg/90">You showed up. Amazing.</p>
+          <p className="mt-1 text-xs text-mommy-muted">Tell us how it felt — TOO EASY or TOO HARD will adjust future workouts and let you re-do today at the new level.</p>
 
           <div className="mt-6 grid grid-cols-2 gap-2">
             <button
-              onClick={() => { nudge(1); complete(); notifyReward("💗 Mommy plan boosted", "Kicked your plan up a notch — same progression speed, harder workouts."); onDone(); }}
+              onClick={() => { nudge(1); notifyReward("💗 Mommy plan boosted", "Kicked your plan up a notch — today will restart at the new level."); onDone(); }}
               className="rounded-xl border-2 border-mommy-primary bg-mommy-primary py-3 font-display text-lg text-white"
             >
               TOO EASY? ⬆️
             </button>
             <button
-              onClick={() => { nudge(-1); complete(); notifyReward("💗 Mommy plan eased", "Dialed it back — same progression speed, gentler workouts."); onDone(); }}
+              onClick={() => { nudge(-1); notifyReward("💗 Mommy plan eased", "Dialed it back — today will restart at the new level."); onDone(); }}
               className="rounded-xl border-2 border-mommy-primary bg-white py-3 font-display text-lg text-mommy-primary"
             >
               TOO HARD? ⬇️
@@ -1430,12 +1431,13 @@ function MommyWorkout({ userId, onExit, onDone }: { userId: string; onExit: () =
             onClick={() => { complete(); onDone(); }}
             className="mt-3 w-full rounded-xl border-2 border-mommy-border bg-mommy-card py-3 font-display text-lg text-mommy-fg"
           >
-            JUST RIGHT ✓
+            JUST RIGHT — ADVANCE ✓
           </button>
         </div>
       </div>
     );
   }
+
 
   const item = day.exercises[idx];
   const isTimed = item.unit === "sec" || item.unit === "min";

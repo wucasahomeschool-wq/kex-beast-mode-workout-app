@@ -19,8 +19,9 @@ import {
   type Category, type DifficultyId, type Exercise,
 } from "@/lib/kex-data";
 import {
-  fetchLeaderboard, scaleAmount, summarizeWorkout, useLeaderboard,
+  exerciseMultiplier, fetchLeaderboard, scaleAmount, summarizeWorkout, useLeaderboard,
   useMyLogs, useMyPreferences, useProfile, useSession, useStats,
+  type ExerciseDifficultyMap,
 } from "@/lib/kex-store";
 import {
   askForPermission, canNotify, loadPrefs as loadNotifPrefs, savePrefs as saveNotifPrefs,
@@ -82,7 +83,7 @@ function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const logs = useMyLogs(userId, refreshKey);
   const stats = useStats(logs);
-  const { excluded, save: savePrefs } = useMyPreferences(userId);
+  const { excluded, exerciseDifficulty, save: savePrefs, saveExerciseDifficulty } = useMyPreferences(userId);
   const [justSignedUp, setJustSignedUp] = useState(false);
 
   // PWA + notification setup once at boot.
@@ -141,7 +142,8 @@ function App() {
   const buildItems = (ids: string[], difficulty: DifficultyId): WorkoutItem[] => {
     const items = ids.map((id) => {
       const meta = findExerciseById(id)!;
-      return { id, meta, unit: meta.unit, amount: scaleAmount(meta.base, DIFFICULTIES[difficulty].mult) };
+      const perExMult = exerciseMultiplier(id, exerciseDifficulty);
+      return { id, meta, unit: meta.unit, amount: scaleAmount(meta.base * perExMult, DIFFICULTIES[difficulty].mult) };
     });
     // Append 3–5 muscle-appropriate stretches (unscaled — stretches are stretches).
     const stretches = stretchesForExercises(ids).map((s) => ({
@@ -238,7 +240,7 @@ function App() {
       )}
       {screen === "tournaments" && userId && <Tournaments myUserId={userId} onBack={() => setScreen("home")} />}
       {screen === "trophies" && <Trophies stats={stats} myUserId={userId!} onBack={() => setScreen("home")} />}
-      {screen === "prefs" && <Preferences excluded={excluded} onSave={savePrefs} onBack={() => setScreen("home")} />}
+      {screen === "prefs" && <Preferences excluded={excluded} exerciseDifficulty={exerciseDifficulty} onSave={savePrefs} onSaveExerciseDifficulty={saveExerciseDifficulty} onBack={() => setScreen("home")} />}
       {screen === "mommy" && userId && (
         <MommyHome userId={userId} onBack={() => setScreen("home")} onStartDay={() => setScreen("mommy-workout")} />
       )}
@@ -1104,14 +1106,35 @@ function Trophies({ stats, myUserId, onBack }: { stats: ReturnType<typeof useSta
 /* =========================================================
    PREFERENCES
    ========================================================= */
-function Preferences({ excluded, onSave, onBack }: { excluded: string[]; onSave: (next: string[]) => void; onBack: () => void }) {
+function Preferences({ excluded, exerciseDifficulty, onSave, onSaveExerciseDifficulty, onBack }: {
+  excluded: string[];
+  exerciseDifficulty: ExerciseDifficultyMap;
+  onSave: (next: string[]) => void;
+  onSaveExerciseDifficulty: (next: ExerciseDifficultyMap) => void;
+  onBack: () => void;
+}) {
   const [local, setLocal] = useState<string[]>(excluded);
+  const [localDiff, setLocalDiff] = useState<ExerciseDifficultyMap>(exerciseDifficulty);
   const [notifPrefs, setNotifPrefs] = useState(() => (typeof window !== "undefined" ? loadNotifPrefs() : { streak: true, tournaments: true, rewards: true, asked: false }));
   useEffect(() => setLocal(excluded), [excluded]);
+  useEffect(() => setLocalDiff(exerciseDifficulty), [exerciseDifficulty]);
   const toggle = (id: string) => setLocal((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
+  const setDiff = (id: string, v: number) => setLocalDiff((m) => {
+    const next = { ...m };
+    if (v === 0) delete next[id]; else next[id] = v;
+    return next;
+  });
   const all = Object.values(ALL_EXERCISES).filter((e) => !e.id.startsWith("stretch."));
 
   const permission = typeof Notification !== "undefined" ? Notification.permission : "denied";
+
+  const DIFF_OPTS: { v: number; label: string; short: string }[] = [
+    { v: -2, label: "REALLY EASY", short: "R.EASY" },
+    { v: -1, label: "EASY", short: "EASY" },
+    { v: 0, label: "NORMAL", short: "NORMAL" },
+    { v: 1, label: "HARD", short: "HARD" },
+    { v: 2, label: "REALLY HARD", short: "R.HARD" },
+  ];
 
   return (
     <div className="min-h-screen px-5 py-6">
@@ -1151,29 +1174,48 @@ function Preferences({ excluded, onSave, onBack }: { excluded: string[]; onSave:
           </div>
         </div>
 
-        <h2 className="mt-6 font-display text-2xl text-foreground">EXCLUDED EXERCISES</h2>
-        <p className="mt-1 text-foreground/80">Tap any exercise to permanently exclude it. Kex will pretend it never existed.</p>
+        <h2 className="mt-6 font-display text-2xl text-foreground">EXERCISE TUNING</h2>
+        <p className="mt-1 text-foreground/80">
+          Some exercises are easier or harder for you than others. Tap "REALLY EASY" to make an exercise <b>harder</b> for your body, or "REALLY HARD" to make it <b>easier</b>. Or tap the name to exclude it entirely.
+        </p>
 
         <div className="mt-3 rounded-xl border-2 border-border bg-card p-3">
           {all.map((e) => {
             const off = local.includes(e.id);
             const cat = e.id.split(".")[0];
+            const cur = localDiff[e.id] ?? 0;
             return (
-              <button key={e.id} onClick={() => toggle(e.id)} className={`mb-2 flex w-full items-center gap-3 rounded-lg border-2 p-2 text-left ${off ? "border-danger bg-danger/10" : "border-border"}`}>
-                <span className="text-2xl">{e.emoji}</span>
-                <span className="flex-1">
-                  <div className={`font-display text-lg leading-none ${off ? "text-danger line-through" : "text-foreground"}`}>{e.name}</div>
-                  <div className="font-condensed text-xs uppercase text-muted-foreground">
-                    {cat}{e.needsPullupBar ? " · pull-up bar" : ""}
+              <div key={e.id} className={`mb-3 rounded-lg border-2 p-2 ${off ? "border-danger bg-danger/10" : "border-border"}`}>
+                <button onClick={() => toggle(e.id)} className="flex w-full items-center gap-3 text-left">
+                  <span className="text-2xl">{e.emoji}</span>
+                  <span className="flex-1">
+                    <div className={`font-display text-lg leading-none ${off ? "text-danger line-through" : "text-foreground"}`}>{e.name}</div>
+                    <div className="font-condensed text-xs uppercase text-muted-foreground">
+                      {cat}{e.needsPullupBar ? " · pull-up bar" : ""}
+                    </div>
+                  </span>
+                  <span className={`font-condensed text-xs font-black uppercase ${off ? "text-danger" : "text-muted-foreground"}`}>{off ? "EXCLUDED" : "ACTIVE"}</span>
+                </button>
+                {!off && (
+                  <div className="mt-2 grid grid-cols-5 gap-1">
+                    {DIFF_OPTS.map((o) => (
+                      <button
+                        key={o.v}
+                        onClick={() => setDiff(e.id, o.v)}
+                        className={`rounded border-2 px-1 py-1 font-condensed text-[10px] font-black uppercase leading-tight ${cur === o.v ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground"}`}
+                        title={o.label}
+                      >
+                        {o.short}
+                      </button>
+                    ))}
                   </div>
-                </span>
-                <span className={`font-condensed text-xs font-black uppercase ${off ? "text-danger" : "text-muted-foreground"}`}>{off ? "EXCLUDED" : "ACTIVE"}</span>
-              </button>
+                )}
+              </div>
             );
           })}
         </div>
         <div className="mt-4 flex gap-3 pb-16">
-          <button onClick={() => { onSave(local); onBack(); }} className="flex-1 rounded-xl bg-primary py-4 font-display text-2xl text-primary-foreground shadow-comic-lg">SAVE</button>
+          <button onClick={() => { onSave(local); onSaveExerciseDifficulty(localDiff); onBack(); }} className="flex-1 rounded-xl bg-primary py-4 font-display text-2xl text-primary-foreground shadow-comic-lg">SAVE</button>
           <button onClick={onBack} className="rounded-xl border-2 border-border bg-card px-6 font-display text-xl text-foreground">CANCEL</button>
         </div>
       </div>
@@ -1212,7 +1254,7 @@ function useMommyState(userId: string) {
 }
 
 function MommyHome({ userId, onBack, onStartDay }: { userId: string; onBack: () => void; onStartDay: () => void }) {
-  const { progress, broken, begin, restart } = useMommyState(userId);
+  const { progress, broken, begin, restart, complete } = useMommyState(userId);
   return (
     <div className="mommy-theme min-h-screen px-5 py-6">
       <div className="mx-auto max-w-3xl">
@@ -1245,14 +1287,14 @@ function MommyHome({ userId, onBack, onStartDay }: { userId: string; onBack: () 
             BEGIN THE 30-DAY JOURNEY
           </button>
         ) : (
-          <MommyPlanView progress={progress} onStartDay={onStartDay} onRestart={restart} />
+          <MommyPlanView progress={progress} onStartDay={onStartDay} onRestart={restart} onCompleteRest={complete} />
         )}
       </div>
     </div>
   );
 }
 
-function MommyPlanView({ progress, onStartDay, onRestart }: { progress: MommyProgress; onStartDay: () => void; onRestart: () => void }) {
+function MommyPlanView({ progress, onStartDay, onRestart, onCompleteRest }: { progress: MommyProgress; onStartDay: () => void; onRestart: () => void; onCompleteRest: () => void }) {
   const plan = useMemo(() => buildMommyPlan(progress.levelOffset), [progress.levelOffset]);
   const today = plan[Math.min(progress.currentDay, plan.length) - 1];
   return (
@@ -1267,7 +1309,7 @@ function MommyPlanView({ progress, onStartDay, onRestart }: { progress: MommyPro
             <p className="mt-1 text-mommy-fg/90">{today.note}</p>
             <p className="mt-2 text-sm text-mommy-muted">Tap "mark rest day complete" to keep your streak alive.</p>
             <button
-              onClick={onStartDay}
+              onClick={onCompleteRest}
               className="mt-4 w-full rounded-2xl bg-mommy-primary py-4 font-display text-2xl text-white shadow-mommy"
             >
               MARK REST DAY COMPLETE ✓
@@ -1295,6 +1337,7 @@ function MommyPlanView({ progress, onStartDay, onRestart }: { progress: MommyPro
           </>
         )}
       </div>
+
 
       <div className="mt-4 flex justify-end pb-16">
         <button onClick={onRestart} className="rounded-lg border-2 border-mommy-border bg-mommy-card px-3 py-2 font-condensed text-xs font-black uppercase text-mommy-muted">
@@ -1341,6 +1384,7 @@ function MommyWorkout({ userId, onExit, onDone }: { userId: string; onExit: () =
   }
 
   if (day.kind === "rest") {
+    // Rest days are completed from MommyHome directly; if we somehow land here, just bounce back.
     return (
       <div className="mommy-theme min-h-screen px-5 py-6">
         <div className="mx-auto max-w-md rounded-2xl border-4 border-mommy-primary bg-mommy-card p-6 text-center shadow-mommy">
@@ -1348,12 +1392,11 @@ function MommyWorkout({ userId, onExit, onDone }: { userId: string; onExit: () =
           <h1 className="mt-2 font-display text-4xl text-mommy-primary">REST DAY</h1>
           <p className="mt-2 text-mommy-fg/90">{day.note}</p>
           <button
-            onClick={() => { complete(); onDone(); }}
+            onClick={onDone}
             className="mt-6 w-full rounded-2xl bg-mommy-primary py-4 font-display text-2xl text-white shadow-mommy"
           >
-            MARK COMPLETE ✓
+            BACK TO PLAN
           </button>
-          <button onClick={onExit} className="mt-2 w-full font-condensed text-xs uppercase text-mommy-muted">Back</button>
         </div>
       </div>
     );
@@ -1368,16 +1411,17 @@ function MommyWorkout({ userId, onExit, onDone }: { userId: string; onExit: () =
           <div className="text-6xl">🌸</div>
           <h1 className="mt-2 font-display text-4xl text-mommy-primary">DAY {progress.currentDay} DONE</h1>
           <p className="mt-2 text-mommy-fg/90">You showed up. Amazing.</p>
+          <p className="mt-1 text-xs text-mommy-muted">Tell us how it felt — TOO EASY or TOO HARD will adjust future workouts and let you re-do today at the new level.</p>
 
           <div className="mt-6 grid grid-cols-2 gap-2">
             <button
-              onClick={() => { nudge(1); complete(); notifyReward("💗 Mommy plan boosted", "Kicked your plan up a notch — same progression speed, harder workouts."); onDone(); }}
+              onClick={() => { nudge(1); notifyReward("💗 Mommy plan boosted", "Kicked your plan up a notch — today will restart at the new level."); onDone(); }}
               className="rounded-xl border-2 border-mommy-primary bg-mommy-primary py-3 font-display text-lg text-white"
             >
               TOO EASY? ⬆️
             </button>
             <button
-              onClick={() => { nudge(-1); complete(); notifyReward("💗 Mommy plan eased", "Dialed it back — same progression speed, gentler workouts."); onDone(); }}
+              onClick={() => { nudge(-1); notifyReward("💗 Mommy plan eased", "Dialed it back — today will restart at the new level."); onDone(); }}
               className="rounded-xl border-2 border-mommy-primary bg-white py-3 font-display text-lg text-mommy-primary"
             >
               TOO HARD? ⬇️
@@ -1387,12 +1431,13 @@ function MommyWorkout({ userId, onExit, onDone }: { userId: string; onExit: () =
             onClick={() => { complete(); onDone(); }}
             className="mt-3 w-full rounded-xl border-2 border-mommy-border bg-mommy-card py-3 font-display text-lg text-mommy-fg"
           >
-            JUST RIGHT ✓
+            JUST RIGHT — ADVANCE ✓
           </button>
         </div>
       </div>
     );
   }
+
 
   const item = day.exercises[idx];
   const isTimed = item.unit === "sec" || item.unit === "min";

@@ -35,16 +35,19 @@ export type Database = {
       user_preferences: {
         Row: {
           excluded_exercises: string[]
+          exercise_difficulty: Json
           updated_at: string
           user_id: string
         }
         Insert: {
           excluded_exercises?: string[]
+          exercise_difficulty?: Json
           updated_at?: string
           user_id: string
         }
         Update: {
           excluded_exercises?: string[]
+          exercise_difficulty?: Json
           updated_at?: string
           user_id?: string
         }

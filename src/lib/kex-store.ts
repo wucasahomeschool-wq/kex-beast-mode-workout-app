@@ -73,22 +73,40 @@ export function useMyLogs(userId: string | null, refreshKey = 0) {
   return logs;
 }
 
+export type ExerciseDifficultyMap = Record<string, number>; // exerciseId -> -2..2 (negative = user finds it easy, app makes it harder)
+
 export function useMyPreferences(userId: string | null) {
   const [excluded, setExcluded] = useState<string[]>([]);
+  const [exerciseDifficulty, setExerciseDifficulty] = useState<ExerciseDifficultyMap>({});
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
-    if (!userId) { setExcluded([]); setLoaded(false); return; }
-    supabase.from("user_preferences").select("excluded_exercises").eq("user_id", userId).maybeSingle().then(({ data }) => {
+    if (!userId) { setExcluded([]); setExerciseDifficulty({}); setLoaded(false); return; }
+    supabase.from("user_preferences").select("excluded_exercises, exercise_difficulty").eq("user_id", userId).maybeSingle().then(({ data }) => {
       setExcluded(data?.excluded_exercises ?? []);
+      const ed = (data as { exercise_difficulty?: unknown } | null)?.exercise_difficulty;
+      setExerciseDifficulty((ed && typeof ed === "object" ? ed : {}) as ExerciseDifficultyMap);
       setLoaded(true);
     });
   }, [userId]);
   const save = useCallback(async (next: string[]) => {
     if (!userId) return;
     setExcluded(next);
-    await supabase.from("user_preferences").upsert({ user_id: userId, excluded_exercises: next, updated_at: new Date().toISOString() });
+    await supabase.from("user_preferences").upsert({ user_id: userId, excluded_exercises: next, updated_at: new Date().toISOString() } as never);
   }, [userId]);
-  return { excluded, save, loaded };
+  const saveExerciseDifficulty = useCallback(async (next: ExerciseDifficultyMap) => {
+    if (!userId) return;
+    setExerciseDifficulty(next);
+    await supabase.from("user_preferences").upsert({ user_id: userId, excluded_exercises: excluded, exercise_difficulty: next, updated_at: new Date().toISOString() } as never);
+  }, [userId, excluded]);
+  return { excluded, exerciseDifficulty, save, saveExerciseDifficulty, loaded };
+}
+
+/** Multiplier applied to an exercise's base amount from the user's per-exercise preference. */
+export function exerciseMultiplier(id: string, map: ExerciseDifficultyMap): number {
+  const v = map[id] ?? 0;
+  // -2 REALLY EASY (harder), -1 EASY (harder), 0 NORMAL, 1 HARD (easier), 2 REALLY HARD (easier)
+  const table: Record<number, number> = { [-2]: 1.4, [-1]: 1.2, 0: 1.0, 1: 0.8, 2: 0.6 };
+  return table[v] ?? 1.0;
 }
 
 export function useStats(logs: WorkoutLogRow[]) {

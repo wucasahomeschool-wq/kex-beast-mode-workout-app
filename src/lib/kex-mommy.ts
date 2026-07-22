@@ -112,9 +112,10 @@ export function buildMommyPlan(levelOffset: number): MommyDay[] {
       days.push({ day: d, kind: "rest", note: "Rest day, mama. Your muscles are getting stronger while you nap." });
       continue;
     }
-    // Base multiplier grows from ~0.55 to ~1.55 across ~20 workout days; offset moves it.
+    // Mommy is stronger than we thought — double the default and progression.
+    // Base multiplier grows from ~1.1 to ~3.1 across ~20 workout days; offset moves it.
     const progress = workoutIndex / 20;
-    const mult = Math.max(0.35, 0.55 + progress * 1.0 + levelOffset * 0.15);
+    const mult = Math.max(0.7, 1.1 + progress * 2.0 + levelOffset * 0.3);
 
     // Pick a subset of the sequence depending on progression.
     // Early days: 5 exercises. Mid: 7. Later: 9.

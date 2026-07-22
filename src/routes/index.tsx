@@ -1254,7 +1254,7 @@ function useMommyState(userId: string) {
 }
 
 function MommyHome({ userId, onBack, onStartDay }: { userId: string; onBack: () => void; onStartDay: () => void }) {
-  const { progress, broken, begin, restart } = useMommyState(userId);
+  const { progress, broken, begin, restart, complete } = useMommyState(userId);
   return (
     <div className="mommy-theme min-h-screen px-5 py-6">
       <div className="mx-auto max-w-3xl">
@@ -1287,14 +1287,14 @@ function MommyHome({ userId, onBack, onStartDay }: { userId: string; onBack: () 
             BEGIN THE 30-DAY JOURNEY
           </button>
         ) : (
-          <MommyPlanView progress={progress} onStartDay={onStartDay} onRestart={restart} />
+          <MommyPlanView progress={progress} onStartDay={onStartDay} onRestart={restart} onCompleteRest={complete} />
         )}
       </div>
     </div>
   );
 }
 
-function MommyPlanView({ progress, onStartDay, onRestart }: { progress: MommyProgress; onStartDay: () => void; onRestart: () => void }) {
+function MommyPlanView({ progress, onStartDay, onRestart, onCompleteRest }: { progress: MommyProgress; onStartDay: () => void; onRestart: () => void; onCompleteRest: () => void }) {
   const plan = useMemo(() => buildMommyPlan(progress.levelOffset), [progress.levelOffset]);
   const today = plan[Math.min(progress.currentDay, plan.length) - 1];
   return (
@@ -1309,7 +1309,7 @@ function MommyPlanView({ progress, onStartDay, onRestart }: { progress: MommyPro
             <p className="mt-1 text-mommy-fg/90">{today.note}</p>
             <p className="mt-2 text-sm text-mommy-muted">Tap "mark rest day complete" to keep your streak alive.</p>
             <button
-              onClick={onStartDay}
+              onClick={onCompleteRest}
               className="mt-4 w-full rounded-2xl bg-mommy-primary py-4 font-display text-2xl text-white shadow-mommy"
             >
               MARK REST DAY COMPLETE ✓
@@ -1337,6 +1337,7 @@ function MommyPlanView({ progress, onStartDay, onRestart }: { progress: MommyPro
           </>
         )}
       </div>
+
 
       <div className="mt-4 flex justify-end pb-16">
         <button onClick={onRestart} className="rounded-lg border-2 border-mommy-border bg-mommy-card px-3 py-2 font-condensed text-xs font-black uppercase text-mommy-muted">

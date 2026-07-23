@@ -85,6 +85,7 @@ function App() {
   const stats = useStats(logs);
   const { excluded, exerciseDifficulty, save: savePrefs, saveExerciseDifficulty } = useMyPreferences(userId);
   const [justSignedUp, setJustSignedUp] = useState(false);
+  const loggingRef = useRef(false);
 
   // PWA + notification setup once at boot.
   useEffect(() => {

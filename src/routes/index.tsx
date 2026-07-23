@@ -714,6 +714,100 @@ function StatChip({ label, value, accent }: { label: string; value: string; acce
     </div>
   );
 }
+
+/* =========================================================
+   MERCY MODAL — plead your case, once per month
+   ========================================================= */
+const MERCY_OPTIONS: { id: string; label: string; kex: string }[] = [
+  { id: "sick", label: "I was physically unable (sick/injured)! Sorry Kex!", kex: "Ugh, FINE. Rest up. If you're not back in 48 hours I'm sending a search party. And by search party I mean me, on my scooter." },
+  { id: "busy", label: "I was too busy! Sorry Kex!", kex: "Too busy?? I'm 7 and I built an entire ab program. But okay. Just this once. I'll see you tomorrow. On the mat." },
+  { id: "device", label: "I didn't have access to my device! Sorry Kex!", kex: "Excuse accepted, but push-ups do not require Wi-Fi, my friend. Just saying." },
+  { id: "sore", label: "Your workout yesterday was really hard and I'm so sore I can hardly move! Sorry Kex!", kex: "Music to my ears. That's the sound of GAINS. Ice bath, stretch, and DOUBLE reps tomorrow. Deal? Deal." },
+  { id: "travel", label: "I was traveling and couldn't get to a workout spot! Sorry Kex!", kex: "Excuses, excuses. But you know hotel floors are also floors, right? Anyway — mercy granted. Once." },
+  { id: "sleep", label: "I didn't get enough sleep and I feel like a zombie! Sorry Kex!", kex: "Recovery is a real thing, so I'll allow it. But if I catch you scrolling TikTok past 11pm I'm taking away your streak MYSELF." },
+  { id: "family", label: "Family emergency! Sorry Kex!", kex: "Family first. Always. I hope everyone's okay. Come back when you can — I'll be here doing planks." },
+  { id: "period", label: "Not feeling well today! Sorry Kex!", kex: "Listen to your body. I'll pretend to be mad but secretly I respect it. Tomorrow though — full send." },
+  { id: "other", label: "Other (I'll explain to Kex myself)…", kex: "Hmm. I'll allow it, but I have my eye on you. This better be good." },
+];
+
+function MercyModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (reason: string) => Promise<void> }) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [otherText, setOtherText] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const opt = MERCY_OPTIONS.find((o) => o.id === selected);
+  const canSubmit = !!opt && (opt.id !== "other" || otherText.trim().length > 2);
+
+  const submit = async () => {
+    if (!opt || !canSubmit) return;
+    setSubmitting(true);
+    const reason = opt.id === "other" ? `Other: ${otherText.trim()}` : opt.label;
+    await onSubmit(reason);
+    setConfirmed(true);
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 sm:items-center">
+      <div className="w-full max-w-lg rounded-2xl border-4 border-primary bg-card p-5 shadow-comic-lg">
+        {confirmed && opt ? (
+          <>
+            <div className="text-center">
+              <div className="text-6xl">🤨</div>
+              <div className="mt-2 font-condensed text-xs font-black uppercase tracking-widest text-secondary">KEX'S RULING</div>
+              <h2 className="mt-1 font-display text-3xl text-primary text-stroke-black">MERCY GRANTED</h2>
+            </div>
+            <div className="mt-4 rounded-xl border-2 border-primary bg-primary/10 p-4 text-foreground">
+              <div className="font-condensed text-xs font-black uppercase text-primary">Kex says:</div>
+              <p className="mt-1 text-lg">"{opt.kex}"</p>
+            </div>
+            <p className="mt-3 text-center font-condensed text-xs uppercase text-muted-foreground">Your streak is safe for today. Don't make Kex regret this.</p>
+            <button onClick={onClose} className="mt-4 w-full rounded-xl bg-primary py-3 font-display text-2xl text-primary-foreground shadow-comic-lg">GOT IT, KEX</button>
+          </>
+        ) : (
+          <>
+            <div className="text-center">
+              <div className="text-5xl">🙏</div>
+              <h2 className="mt-1 font-display text-3xl text-primary text-stroke-black">PLEAD FOR MERCY</h2>
+              <p className="mt-1 text-sm text-foreground/80">One free pass per month. Tell Kex why you can't work out today.</p>
+            </div>
+            <div className="mt-4 max-h-[45vh] space-y-2 overflow-y-auto pr-1">
+              {MERCY_OPTIONS.map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => setSelected(o.id)}
+                  className={`w-full rounded-xl border-2 p-3 text-left transition ${selected === o.id ? "border-primary bg-primary/10" : "border-border bg-background hover:border-primary/60"}`}
+                >
+                  <div className="font-condensed text-sm font-bold text-foreground">{o.label}</div>
+                </button>
+              ))}
+              {selected === "other" && (
+                <textarea
+                  value={otherText}
+                  onChange={(e) => setOtherText(e.target.value)}
+                  placeholder="Explain yourself to Kex…"
+                  maxLength={280}
+                  className="mt-1 w-full rounded-xl border-2 border-primary bg-background p-3 font-condensed text-sm text-foreground focus:outline-none"
+                  rows={3}
+                />
+              )}
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button onClick={onClose} className="rounded-xl border-2 border-border bg-card px-4 py-3 font-display text-lg text-foreground">CANCEL</button>
+              <button
+                onClick={submit}
+                disabled={!canSubmit || submitting}
+                className="flex-1 rounded-xl bg-primary py-3 font-display text-2xl text-primary-foreground shadow-comic-lg disabled:opacity-40"
+              >
+                {submitting ? "…" : "SUBMIT PLEA"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 function CategoryCard({ title, subtitle, emoji, img, selected, onSelect, badge }: {
   title: string; subtitle: string; emoji: string; img: string; selected: boolean; onSelect: () => void; badge?: string;
 }) {

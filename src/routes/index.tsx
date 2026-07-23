@@ -72,6 +72,12 @@ function hasOnboarded() { try { return localStorage.getItem(ONBOARD_KEY) === "1"
 function markToured() { try { localStorage.setItem(TOUR_KEY, "1"); } catch {} }
 function hasToured() { try { return localStorage.getItem(TOUR_KEY) === "1"; } catch { return false; } }
 
+function mercyKey(userId: string) { return `kex-mercy-month-${userId}`; }
+function monthKey(d = new Date()) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
+function getLastMercyMonth(userId: string): string | null {
+  try { return localStorage.getItem(mercyKey(userId)); } catch { return null; }
+}
+
 /* =========================================================
    ROOT
    ========================================================= */
@@ -85,6 +91,7 @@ function App() {
   const stats = useStats(logs);
   const { excluded, exerciseDifficulty, save: savePrefs, saveExerciseDifficulty } = useMyPreferences(userId);
   const [justSignedUp, setJustSignedUp] = useState(false);
+  const loggingRef = useRef(false);
 
   // PWA + notification setup once at boot.
   useEffect(() => {
@@ -178,28 +185,70 @@ function App() {
 
   const completeWorkout = async () => {
     if (!session || !userId) { setScreen("home"); return; }
-    // Exclude stretches from logged exercises so summaries stay meaningful.
-    const logged = session.items.filter((i) => !i.id.startsWith("stretch."));
-    const exercisesJson = logged.map((i) => ({ id: i.id, amount: i.amount, unit: i.unit }));
-    const { plankSeconds, pullupReps } = summarizeWorkout(exercisesJson);
-    const prevStreak = stats.streak;
-    const prevWorkouts = stats.totalWorkouts;
+    if (loggingRef.current) return;
+    loggingRef.current = true;
+    try {
+      // Exclude stretches from logged exercises so summaries stay meaningful.
+      const logged = session.items.filter((i) => !i.id.startsWith("stretch."));
+      const exercisesJson = logged.map((i) => ({ id: i.id, amount: i.amount, unit: i.unit }));
+      const { plankSeconds, pullupReps } = summarizeWorkout(exercisesJson);
+      const prevStreak = stats.streak;
+      const prevWorkouts = stats.totalWorkouts;
+      await supabase.from("workout_logs").insert({
+        user_id: userId,
+        category: session.category === "custom" ? "custom" : session.category,
+        difficulty: session.difficulty,
+        routine_name: session.routineName,
+        is_custom: session.isCustom,
+        exercises: exercisesJson,
+        plank_seconds: plankSeconds,
+        pullup_reps: pullupReps,
+      });
+      setRefreshKey((k) => k + 1);
+      const newWorkouts = prevWorkouts + 1;
+      const workoutMilestone = WORKOUT_MILESTONES.find((n) => newWorkouts === n);
+      if (workoutMilestone) notifyReward("🎖️ TROPHY UNLOCKED", `${workoutMilestone} workout${workoutMilestone === 1 ? "" : "s"} completed!`);
+      if (prevStreak === 0 && !workedOutToday) notifyReward("🔥 STREAK STARTED!", "One down. Kex is watching.");
+    } finally {
+      loggingRef.current = false;
+    }
+  };
+
+  const logMommyDay = async (day: number) => {
+    if (!userId) return;
+    if (loggingRef.current) return;
+    loggingRef.current = true;
+    try {
+      await supabase.from("workout_logs").insert({
+        user_id: userId,
+        category: "mommy",
+        difficulty: 0,
+        routine_name: `Mommy Day ${day}`,
+        is_custom: false,
+        exercises: [],
+        plank_seconds: 0,
+        pullup_reps: 0,
+      });
+      setRefreshKey((k) => k + 1);
+    } finally {
+      loggingRef.current = false;
+    }
+  };
+
+  const pleadForMercy = async (reason: string) => {
+    if (!userId) return;
     await supabase.from("workout_logs").insert({
       user_id: userId,
-      category: session.category === "custom" ? "custom" : session.category,
-      difficulty: session.difficulty,
-      routine_name: session.routineName,
-      is_custom: session.isCustom,
-      exercises: exercisesJson,
-      plank_seconds: plankSeconds,
-      pullup_reps: pullupReps,
+      category: "mercy",
+      difficulty: 0,
+      routine_name: "Pleaded for mercy",
+      is_custom: false,
+      exercises: [{ id: "mercy.excuse", amount: 1, unit: "reps", note: reason } as unknown as { id: string; amount: number; unit: string }],
+      plank_seconds: 0,
+      pullup_reps: 0,
     });
+    try { localStorage.setItem(mercyKey(userId), monthKey()); } catch {}
     setRefreshKey((k) => k + 1);
-    // Reward notifications for milestone unlocks.
-    const newWorkouts = prevWorkouts + 1;
-    const workoutMilestone = WORKOUT_MILESTONES.find((n) => newWorkouts === n);
-    if (workoutMilestone) notifyReward("🎖️ TROPHY UNLOCKED", `${workoutMilestone} workout${workoutMilestone === 1 ? "" : "s"} completed!`);
-    if (prevStreak === 0 && !workedOutToday) notifyReward("🔥 STREAK STARTED!", "One down. Kex is watching.");
   };
 
   return (
@@ -215,9 +264,10 @@ function App() {
       {screen === "tour" && profile && (
         <FeatureTour onDone={() => { markToured(); setScreen("home"); setJustSignedUp(false); }} />
       )}
-      {screen === "home" && profile && (
+      {screen === "home" && profile && userId && (
         <Home
           profile={profile}
+          userId={userId}
           stats={stats}
           onStart={startBuiltWorkout}
           onCustom={() => setScreen("custom")}
@@ -226,6 +276,7 @@ function App() {
           onPrefs={() => setScreen("prefs")}
           onMommy={() => setScreen("mommy")}
           onSignOut={async () => { await supabase.auth.signOut(); setScreen("auth"); }}
+          onPlead={pleadForMercy}
         />
       )}
       {screen === "workout" && session && (
@@ -242,10 +293,10 @@ function App() {
       {screen === "trophies" && <Trophies stats={stats} myUserId={userId!} onBack={() => setScreen("home")} />}
       {screen === "prefs" && <Preferences excluded={excluded} exerciseDifficulty={exerciseDifficulty} onSave={savePrefs} onSaveExerciseDifficulty={saveExerciseDifficulty} onBack={() => setScreen("home")} />}
       {screen === "mommy" && userId && (
-        <MommyHome userId={userId} onBack={() => setScreen("home")} onStartDay={() => setScreen("mommy-workout")} />
+        <MommyHome userId={userId} onBack={() => setScreen("home")} onStartDay={() => setScreen("mommy-workout")} onLogDay={logMommyDay} />
       )}
       {screen === "mommy-workout" && userId && (
-        <MommyWorkout userId={userId} onExit={() => setScreen("mommy")} onDone={() => setScreen("mommy")} />
+        <MommyWorkout userId={userId} onExit={() => setScreen("mommy")} onDone={() => setScreen("mommy")} onLogDay={logMommyDay} />
       )}
     </div>
   );
@@ -526,9 +577,10 @@ function FeatureTour({ onDone }: { onDone: () => void }) {
    HOME
    ========================================================= */
 function Home({
-  profile, stats, onStart, onCustom, onTournaments, onTrophies, onPrefs, onMommy, onSignOut,
+  profile, userId, stats, onStart, onCustom, onTournaments, onTrophies, onPrefs, onMommy, onSignOut, onPlead,
 }: {
   profile: { username: string };
+  userId: string;
   stats: ReturnType<typeof useStats>;
   onStart: (c: Category, d: DifficultyId) => void;
   onCustom: () => void;
@@ -537,13 +589,28 @@ function Home({
   onPrefs: () => void;
   onMommy: () => void;
   onSignOut: () => void;
+  onPlead: (reason: string) => Promise<void>;
 }) {
   const [category, setCategory] = useState<Category>("core");
   const [difficulty, setDifficulty] = useState<DifficultyId>(3);
+  const [mercyOpen, setMercyOpen] = useState(false);
+  const [mercyUsedMonth, setMercyUsedMonth] = useState<string | null>(() => getLastMercyMonth(userId));
+  const mercyAvailable = mercyUsedMonth !== monthKey();
   return (
     <div className="relative min-h-screen px-5 py-6">
       <div className="mx-auto max-w-5xl">
         <TopBar profile={profile} onSignOut={onSignOut} />
+
+        <div className="mt-3">
+          <button
+            onClick={() => setMercyOpen(true)}
+            disabled={!mercyAvailable}
+            className={`w-full rounded-xl border-2 px-4 py-3 text-left font-condensed text-sm font-black uppercase shadow-comic transition ${mercyAvailable ? "border-danger bg-danger/10 text-danger hover:bg-danger/20" : "border-border bg-card text-muted-foreground opacity-60"}`}
+          >
+            🙏 PLEAD FOR MERCY FROM KEX {mercyAvailable ? "· save your streak (1/month)" : "· already used this month"}
+          </button>
+        </div>
+
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
           <NavBtn label="TOURNAMENTS" emoji="🏆" onClick={onTournaments} />
           <NavBtn label="TROPHIES" emoji="🏅" onClick={onTrophies} />
@@ -551,6 +618,18 @@ function Home({
           <NavBtn label="PREFERENCES" emoji="⚙️" onClick={onPrefs} />
           <NavBtn label="MOMMY ❤️" emoji="💗" onClick={onMommy} />
         </div>
+
+        {mercyOpen && (
+          <MercyModal
+            onClose={() => setMercyOpen(false)}
+            onSubmit={async (reason) => {
+              await onPlead(reason);
+              setMercyUsedMonth(monthKey());
+              setMercyOpen(false);
+            }}
+          />
+        )}
+
 
         <StatsStrip stats={stats} />
 
@@ -632,6 +711,100 @@ function StatChip({ label, value, accent }: { label: string; value: string; acce
     <div className={`rounded-xl border-2 p-3 text-center ${accent ? "border-primary bg-primary/10" : "border-border bg-card"}`}>
       <div className="font-display text-3xl text-foreground">{value}</div>
       <div className="font-condensed text-xs font-black uppercase text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
+/* =========================================================
+   MERCY MODAL — plead your case, once per month
+   ========================================================= */
+const MERCY_OPTIONS: { id: string; label: string; kex: string }[] = [
+  { id: "sick", label: "I was physically unable (sick/injured)! Sorry Kex!", kex: "Ugh, FINE. Rest up. If you're not back in 48 hours I'm sending a search party. And by search party I mean me, on my scooter." },
+  { id: "busy", label: "I was too busy! Sorry Kex!", kex: "Too busy?? I'm 7 and I built an entire ab program. But okay. Just this once. I'll see you tomorrow. On the mat." },
+  { id: "device", label: "I didn't have access to my device! Sorry Kex!", kex: "Excuse accepted, but push-ups do not require Wi-Fi, my friend. Just saying." },
+  { id: "sore", label: "Your workout yesterday was really hard and I'm so sore I can hardly move! Sorry Kex!", kex: "Music to my ears. That's the sound of GAINS. Ice bath, stretch, and DOUBLE reps tomorrow. Deal? Deal." },
+  { id: "travel", label: "I was traveling and couldn't get to a workout spot! Sorry Kex!", kex: "Excuses, excuses. But you know hotel floors are also floors, right? Anyway — mercy granted. Once." },
+  { id: "sleep", label: "I didn't get enough sleep and I feel like a zombie! Sorry Kex!", kex: "Recovery is a real thing, so I'll allow it. But if I catch you scrolling TikTok past 11pm I'm taking away your streak MYSELF." },
+  { id: "family", label: "Family emergency! Sorry Kex!", kex: "Family first. Always. I hope everyone's okay. Come back when you can — I'll be here doing planks." },
+  { id: "period", label: "Not feeling well today! Sorry Kex!", kex: "Listen to your body. I'll pretend to be mad but secretly I respect it. Tomorrow though — full send." },
+  { id: "other", label: "Other (I'll explain to Kex myself)…", kex: "Hmm. I'll allow it, but I have my eye on you. This better be good." },
+];
+
+function MercyModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (reason: string) => Promise<void> }) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [otherText, setOtherText] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const opt = MERCY_OPTIONS.find((o) => o.id === selected);
+  const canSubmit = !!opt && (opt.id !== "other" || otherText.trim().length > 2);
+
+  const submit = async () => {
+    if (!opt || !canSubmit) return;
+    setSubmitting(true);
+    const reason = opt.id === "other" ? `Other: ${otherText.trim()}` : opt.label;
+    await onSubmit(reason);
+    setConfirmed(true);
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 sm:items-center">
+      <div className="w-full max-w-lg rounded-2xl border-4 border-primary bg-card p-5 shadow-comic-lg">
+        {confirmed && opt ? (
+          <>
+            <div className="text-center">
+              <div className="text-6xl">🤨</div>
+              <div className="mt-2 font-condensed text-xs font-black uppercase tracking-widest text-secondary">KEX'S RULING</div>
+              <h2 className="mt-1 font-display text-3xl text-primary text-stroke-black">MERCY GRANTED</h2>
+            </div>
+            <div className="mt-4 rounded-xl border-2 border-primary bg-primary/10 p-4 text-foreground">
+              <div className="font-condensed text-xs font-black uppercase text-primary">Kex says:</div>
+              <p className="mt-1 text-lg">"{opt.kex}"</p>
+            </div>
+            <p className="mt-3 text-center font-condensed text-xs uppercase text-muted-foreground">Your streak is safe for today. Don't make Kex regret this.</p>
+            <button onClick={onClose} className="mt-4 w-full rounded-xl bg-primary py-3 font-display text-2xl text-primary-foreground shadow-comic-lg">GOT IT, KEX</button>
+          </>
+        ) : (
+          <>
+            <div className="text-center">
+              <div className="text-5xl">🙏</div>
+              <h2 className="mt-1 font-display text-3xl text-primary text-stroke-black">PLEAD FOR MERCY</h2>
+              <p className="mt-1 text-sm text-foreground/80">One free pass per month. Tell Kex why you can't work out today.</p>
+            </div>
+            <div className="mt-4 max-h-[45vh] space-y-2 overflow-y-auto pr-1">
+              {MERCY_OPTIONS.map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => setSelected(o.id)}
+                  className={`w-full rounded-xl border-2 p-3 text-left transition ${selected === o.id ? "border-primary bg-primary/10" : "border-border bg-background hover:border-primary/60"}`}
+                >
+                  <div className="font-condensed text-sm font-bold text-foreground">{o.label}</div>
+                </button>
+              ))}
+              {selected === "other" && (
+                <textarea
+                  value={otherText}
+                  onChange={(e) => setOtherText(e.target.value)}
+                  placeholder="Explain yourself to Kex…"
+                  maxLength={280}
+                  className="mt-1 w-full rounded-xl border-2 border-primary bg-background p-3 font-condensed text-sm text-foreground focus:outline-none"
+                  rows={3}
+                />
+              )}
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button onClick={onClose} className="rounded-xl border-2 border-border bg-card px-4 py-3 font-display text-lg text-foreground">CANCEL</button>
+              <button
+                onClick={submit}
+                disabled={!canSubmit || submitting}
+                className="flex-1 rounded-xl bg-primary py-3 font-display text-2xl text-primary-foreground shadow-comic-lg disabled:opacity-40"
+              >
+                {submitting ? "…" : "SUBMIT PLEA"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -1042,15 +1215,15 @@ function Trophies({ stats, myUserId, onBack }: { stats: ReturnType<typeof useSta
 
   useEffect(() => {
     (async () => {
-      const wins = new Set<string>();
       const currentCycle = cyclesSinceAnchor();
-      // Check all past cycles for wins.
-      for (let c = 0; c < currentCycle; c++) {
-        const rows = await fetchLeaderboard(c);
+      const cycles = Array.from({ length: currentCycle }, (_, c) => c);
+      const results = await Promise.all(cycles.map((c) => fetchLeaderboard(c)));
+      const wins = new Set<string>();
+      results.forEach((rows, c) => {
         if (rows.length && rows[0].user_id === myUserId && rows[0].score > 0) {
           wins.add(TOURNAMENTS[tournamentIndexForCycle(c)].id);
         }
-      }
+      });
       setTournamentWins(wins);
     })();
   }, [myUserId]);
@@ -1253,8 +1426,12 @@ function useMommyState(userId: string) {
   return { progress, broken, begin, nudge, complete, restart };
 }
 
-function MommyHome({ userId, onBack, onStartDay }: { userId: string; onBack: () => void; onStartDay: () => void }) {
+function MommyHome({ userId, onBack, onStartDay, onLogDay }: { userId: string; onBack: () => void; onStartDay: () => void; onLogDay: (day: number) => Promise<void> }) {
   const { progress, broken, begin, restart, complete } = useMommyState(userId);
+  const completeRest = async () => {
+    if (progress) await onLogDay(progress.currentDay);
+    complete();
+  };
   return (
     <div className="mommy-theme min-h-screen px-5 py-6">
       <div className="mx-auto max-w-3xl">
@@ -1287,7 +1464,7 @@ function MommyHome({ userId, onBack, onStartDay }: { userId: string; onBack: () 
             BEGIN THE 30-DAY JOURNEY
           </button>
         ) : (
-          <MommyPlanView progress={progress} onStartDay={onStartDay} onRestart={restart} onCompleteRest={complete} />
+          <MommyPlanView progress={progress} onStartDay={onStartDay} onRestart={restart} onCompleteRest={completeRest} />
         )}
       </div>
     </div>
@@ -1348,7 +1525,7 @@ function MommyPlanView({ progress, onStartDay, onRestart, onCompleteRest }: { pr
   );
 }
 
-function MommyWorkout({ userId, onExit, onDone }: { userId: string; onExit: () => void; onDone: () => void }) {
+function MommyWorkout({ userId, onExit, onDone, onLogDay }: { userId: string; onExit: () => void; onDone: () => void; onLogDay: (day: number) => Promise<void> }) {
   const { progress, complete, nudge } = useMommyState(userId);
   const plan = useMemo(() => (progress ? buildMommyPlan(progress.levelOffset) : []), [progress]);
   const day: MommyDay | undefined = progress ? plan[Math.min(progress.currentDay, plan.length) - 1] : undefined;
@@ -1357,6 +1534,14 @@ function MommyWorkout({ userId, onExit, onDone }: { userId: string; onExit: () =
   const [countdown, setCountdown] = useState(3);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [finished, setFinished] = useState(false);
+  const loggedRef = useRef(false);
+  useEffect(() => {
+    const isDone = day && day.kind === "workout" && (idx >= day.exercises.length || finished);
+    if (isDone && progress && !loggedRef.current) {
+      loggedRef.current = true;
+      onLogDay(progress.currentDay);
+    }
+  }, [idx, finished, day, progress, onLogDay]);
 
   useEffect(() => { setPhase("idle"); setCountdown(3); setRemaining(null); }, [idx]);
   useEffect(() => {

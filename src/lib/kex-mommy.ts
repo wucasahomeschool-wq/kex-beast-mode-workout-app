@@ -146,8 +146,8 @@ export function buildMommyPlan(levelOffset: number): MommyDay[] {
     const mult = Math.max(0.7, 1.1 + progress * 2.0 + levelOffset * 0.3);
 
     // Pick a subset of the sequence depending on progression.
-    // Early days: 5 exercises. Mid: 7. Later: 9.
-    const count = d < 6 ? 5 : d < 15 ? 7 : 9;
+    // Early days: 11 exercises. Mid: 12. Later: 13.
+    const count = d < 6 ? 11 : d < 15 ? 12 : 13;
     // Skip weighted moves in the very early days.
     const includeWeights = d >= 4;
     const pool = SEQUENCE.filter((f) => includeWeights ? true : !f(1).usesWeights);

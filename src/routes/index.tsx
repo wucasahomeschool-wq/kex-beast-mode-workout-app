@@ -1370,7 +1370,7 @@ function MommyHome({ userId, onBack, onStartDay, onLogDay }: { userId: string; o
             BEGIN THE 30-DAY JOURNEY
           </button>
         ) : (
-          <MommyPlanView progress={progress} onStartDay={onStartDay} onRestart={restart} onCompleteRest={complete} />
+          <MommyPlanView progress={progress} onStartDay={onStartDay} onRestart={restart} onCompleteRest={completeRest} />
         )}
       </div>
     </div>

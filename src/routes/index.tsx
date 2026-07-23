@@ -1431,7 +1431,7 @@ function MommyPlanView({ progress, onStartDay, onRestart, onCompleteRest }: { pr
   );
 }
 
-function MommyWorkout({ userId, onExit, onDone }: { userId: string; onExit: () => void; onDone: () => void }) {
+function MommyWorkout({ userId, onExit, onDone, onLogDay }: { userId: string; onExit: () => void; onDone: () => void; onLogDay: (day: number) => Promise<void> }) {
   const { progress, complete, nudge } = useMommyState(userId);
   const plan = useMemo(() => (progress ? buildMommyPlan(progress.levelOffset) : []), [progress]);
   const day: MommyDay | undefined = progress ? plan[Math.min(progress.currentDay, plan.length) - 1] : undefined;
@@ -1440,6 +1440,14 @@ function MommyWorkout({ userId, onExit, onDone }: { userId: string; onExit: () =
   const [countdown, setCountdown] = useState(3);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [finished, setFinished] = useState(false);
+  const loggedRef = useRef(false);
+  useEffect(() => {
+    const isDone = day && day.kind === "workout" && (idx >= day.exercises.length || finished);
+    if (isDone && progress && !loggedRef.current) {
+      loggedRef.current = true;
+      onLogDay(progress.currentDay);
+    }
+  }, [idx, finished, day, progress, onLogDay]);
 
   useEffect(() => { setPhase("idle"); setCountdown(3); setRemaining(null); }, [idx]);
   useEffect(() => {

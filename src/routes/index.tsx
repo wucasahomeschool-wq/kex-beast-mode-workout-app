@@ -577,9 +577,10 @@ function FeatureTour({ onDone }: { onDone: () => void }) {
    HOME
    ========================================================= */
 function Home({
-  profile, stats, onStart, onCustom, onTournaments, onTrophies, onPrefs, onMommy, onSignOut,
+  profile, userId, stats, onStart, onCustom, onTournaments, onTrophies, onPrefs, onMommy, onSignOut, onPlead,
 }: {
   profile: { username: string };
+  userId: string;
   stats: ReturnType<typeof useStats>;
   onStart: (c: Category, d: DifficultyId) => void;
   onCustom: () => void;
@@ -588,13 +589,28 @@ function Home({
   onPrefs: () => void;
   onMommy: () => void;
   onSignOut: () => void;
+  onPlead: (reason: string) => Promise<void>;
 }) {
   const [category, setCategory] = useState<Category>("core");
   const [difficulty, setDifficulty] = useState<DifficultyId>(3);
+  const [mercyOpen, setMercyOpen] = useState(false);
+  const [mercyUsedMonth, setMercyUsedMonth] = useState<string | null>(() => getLastMercyMonth(userId));
+  const mercyAvailable = mercyUsedMonth !== monthKey();
   return (
     <div className="relative min-h-screen px-5 py-6">
       <div className="mx-auto max-w-5xl">
         <TopBar profile={profile} onSignOut={onSignOut} />
+
+        <div className="mt-3">
+          <button
+            onClick={() => setMercyOpen(true)}
+            disabled={!mercyAvailable}
+            className={`w-full rounded-xl border-2 px-4 py-3 text-left font-condensed text-sm font-black uppercase shadow-comic transition ${mercyAvailable ? "border-danger bg-danger/10 text-danger hover:bg-danger/20" : "border-border bg-card text-muted-foreground opacity-60"}`}
+          >
+            🙏 PLEAD FOR MERCY FROM KEX {mercyAvailable ? "· save your streak (1/month)" : "· already used this month"}
+          </button>
+        </div>
+
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
           <NavBtn label="TOURNAMENTS" emoji="🏆" onClick={onTournaments} />
           <NavBtn label="TROPHIES" emoji="🏅" onClick={onTrophies} />
@@ -602,6 +618,18 @@ function Home({
           <NavBtn label="PREFERENCES" emoji="⚙️" onClick={onPrefs} />
           <NavBtn label="MOMMY ❤️" emoji="💗" onClick={onMommy} />
         </div>
+
+        {mercyOpen && (
+          <MercyModal
+            onClose={() => setMercyOpen(false)}
+            onSubmit={async (reason) => {
+              await onPlead(reason);
+              setMercyUsedMonth(monthKey());
+              setMercyOpen(false);
+            }}
+          />
+        )}
+
 
         <StatsStrip stats={stats} />
 

@@ -72,6 +72,12 @@ function hasOnboarded() { try { return localStorage.getItem(ONBOARD_KEY) === "1"
 function markToured() { try { localStorage.setItem(TOUR_KEY, "1"); } catch {} }
 function hasToured() { try { return localStorage.getItem(TOUR_KEY) === "1"; } catch { return false; } }
 
+function mercyKey(userId: string) { return `kex-mercy-month-${userId}`; }
+function monthKey(d = new Date()) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
+function getLastMercyMonth(userId: string): string | null {
+  try { return localStorage.getItem(mercyKey(userId)); } catch { return null; }
+}
+
 /* =========================================================
    ROOT
    ========================================================= */

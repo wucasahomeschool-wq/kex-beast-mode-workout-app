@@ -1042,15 +1042,15 @@ function Trophies({ stats, myUserId, onBack }: { stats: ReturnType<typeof useSta
 
   useEffect(() => {
     (async () => {
-      const wins = new Set<string>();
       const currentCycle = cyclesSinceAnchor();
-      // Check all past cycles for wins.
-      for (let c = 0; c < currentCycle; c++) {
-        const rows = await fetchLeaderboard(c);
+      const cycles = Array.from({ length: currentCycle }, (_, c) => c);
+      const results = await Promise.all(cycles.map((c) => fetchLeaderboard(c)));
+      const wins = new Set<string>();
+      results.forEach((rows, c) => {
         if (rows.length && rows[0].user_id === myUserId && rows[0].score > 0) {
           wins.add(TOURNAMENTS[tournamentIndexForCycle(c)].id);
         }
-      }
+      });
       setTournamentWins(wins);
     })();
   }, [myUserId]);

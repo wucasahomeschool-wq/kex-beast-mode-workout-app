@@ -179,28 +179,70 @@ function App() {
 
   const completeWorkout = async () => {
     if (!session || !userId) { setScreen("home"); return; }
-    // Exclude stretches from logged exercises so summaries stay meaningful.
-    const logged = session.items.filter((i) => !i.id.startsWith("stretch."));
-    const exercisesJson = logged.map((i) => ({ id: i.id, amount: i.amount, unit: i.unit }));
-    const { plankSeconds, pullupReps } = summarizeWorkout(exercisesJson);
-    const prevStreak = stats.streak;
-    const prevWorkouts = stats.totalWorkouts;
+    if (loggingRef.current) return;
+    loggingRef.current = true;
+    try {
+      // Exclude stretches from logged exercises so summaries stay meaningful.
+      const logged = session.items.filter((i) => !i.id.startsWith("stretch."));
+      const exercisesJson = logged.map((i) => ({ id: i.id, amount: i.amount, unit: i.unit }));
+      const { plankSeconds, pullupReps } = summarizeWorkout(exercisesJson);
+      const prevStreak = stats.streak;
+      const prevWorkouts = stats.totalWorkouts;
+      await supabase.from("workout_logs").insert({
+        user_id: userId,
+        category: session.category === "custom" ? "custom" : session.category,
+        difficulty: session.difficulty,
+        routine_name: session.routineName,
+        is_custom: session.isCustom,
+        exercises: exercisesJson,
+        plank_seconds: plankSeconds,
+        pullup_reps: pullupReps,
+      });
+      setRefreshKey((k) => k + 1);
+      const newWorkouts = prevWorkouts + 1;
+      const workoutMilestone = WORKOUT_MILESTONES.find((n) => newWorkouts === n);
+      if (workoutMilestone) notifyReward("🎖️ TROPHY UNLOCKED", `${workoutMilestone} workout${workoutMilestone === 1 ? "" : "s"} completed!`);
+      if (prevStreak === 0 && !workedOutToday) notifyReward("🔥 STREAK STARTED!", "One down. Kex is watching.");
+    } finally {
+      loggingRef.current = false;
+    }
+  };
+
+  const logMommyDay = async (day: number) => {
+    if (!userId) return;
+    if (loggingRef.current) return;
+    loggingRef.current = true;
+    try {
+      await supabase.from("workout_logs").insert({
+        user_id: userId,
+        category: "mommy",
+        difficulty: 0,
+        routine_name: `Mommy Day ${day}`,
+        is_custom: false,
+        exercises: [],
+        plank_seconds: 0,
+        pullup_reps: 0,
+      });
+      setRefreshKey((k) => k + 1);
+    } finally {
+      loggingRef.current = false;
+    }
+  };
+
+  const pleadForMercy = async (reason: string) => {
+    if (!userId) return;
     await supabase.from("workout_logs").insert({
       user_id: userId,
-      category: session.category === "custom" ? "custom" : session.category,
-      difficulty: session.difficulty,
-      routine_name: session.routineName,
-      is_custom: session.isCustom,
-      exercises: exercisesJson,
-      plank_seconds: plankSeconds,
-      pullup_reps: pullupReps,
+      category: "mercy",
+      difficulty: 0,
+      routine_name: "Pleaded for mercy",
+      is_custom: false,
+      exercises: [{ id: "mercy.excuse", amount: 1, unit: "reps", note: reason } as unknown as { id: string; amount: number; unit: string }],
+      plank_seconds: 0,
+      pullup_reps: 0,
     });
+    try { localStorage.setItem(mercyKey(userId), monthKey()); } catch {}
     setRefreshKey((k) => k + 1);
-    // Reward notifications for milestone unlocks.
-    const newWorkouts = prevWorkouts + 1;
-    const workoutMilestone = WORKOUT_MILESTONES.find((n) => newWorkouts === n);
-    if (workoutMilestone) notifyReward("🎖️ TROPHY UNLOCKED", `${workoutMilestone} workout${workoutMilestone === 1 ? "" : "s"} completed!`);
-    if (prevStreak === 0 && !workedOutToday) notifyReward("🔥 STREAK STARTED!", "One down. Kex is watching.");
   };
 
   return (

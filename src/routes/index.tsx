@@ -264,9 +264,10 @@ function App() {
       {screen === "tour" && profile && (
         <FeatureTour onDone={() => { markToured(); setScreen("home"); setJustSignedUp(false); }} />
       )}
-      {screen === "home" && profile && (
+      {screen === "home" && profile && userId && (
         <Home
           profile={profile}
+          userId={userId}
           stats={stats}
           onStart={startBuiltWorkout}
           onCustom={() => setScreen("custom")}
@@ -275,6 +276,7 @@ function App() {
           onPrefs={() => setScreen("prefs")}
           onMommy={() => setScreen("mommy")}
           onSignOut={async () => { await supabase.auth.signOut(); setScreen("auth"); }}
+          onPlead={pleadForMercy}
         />
       )}
       {screen === "workout" && session && (
@@ -291,10 +293,10 @@ function App() {
       {screen === "trophies" && <Trophies stats={stats} myUserId={userId!} onBack={() => setScreen("home")} />}
       {screen === "prefs" && <Preferences excluded={excluded} exerciseDifficulty={exerciseDifficulty} onSave={savePrefs} onSaveExerciseDifficulty={saveExerciseDifficulty} onBack={() => setScreen("home")} />}
       {screen === "mommy" && userId && (
-        <MommyHome userId={userId} onBack={() => setScreen("home")} onStartDay={() => setScreen("mommy-workout")} />
+        <MommyHome userId={userId} onBack={() => setScreen("home")} onStartDay={() => setScreen("mommy-workout")} onLogDay={logMommyDay} />
       )}
       {screen === "mommy-workout" && userId && (
-        <MommyWorkout userId={userId} onExit={() => setScreen("mommy")} onDone={() => setScreen("mommy")} />
+        <MommyWorkout userId={userId} onExit={() => setScreen("mommy")} onDone={() => setScreen("mommy")} onLogDay={logMommyDay} />
       )}
     </div>
   );

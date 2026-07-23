@@ -1332,8 +1332,12 @@ function useMommyState(userId: string) {
   return { progress, broken, begin, nudge, complete, restart };
 }
 
-function MommyHome({ userId, onBack, onStartDay }: { userId: string; onBack: () => void; onStartDay: () => void }) {
+function MommyHome({ userId, onBack, onStartDay, onLogDay }: { userId: string; onBack: () => void; onStartDay: () => void; onLogDay: (day: number) => Promise<void> }) {
   const { progress, broken, begin, restart, complete } = useMommyState(userId);
+  const completeRest = async () => {
+    if (progress) await onLogDay(progress.currentDay);
+    complete();
+  };
   return (
     <div className="mommy-theme min-h-screen px-5 py-6">
       <div className="mx-auto max-w-3xl">

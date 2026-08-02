@@ -346,14 +346,21 @@ function findExerciseById(id: string): Exercise | undefined {
    AUTH  (username-only) — now the FIRST screen
    ========================================================= */
 function Auth({ onDone }: { onDone: (mode: "signup" | "signin") => void }) {
-  const [mode, setMode] = useState<"signup" | "signin">("signup");
+  const [mode, setMode] = useState<"signup" | "signin" | "editor">("signup");
   const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { startEditor } = useCopyCtx();
 
   const submit = async () => {
     setErr(null); setLoading(true);
     try {
+      if (mode === "editor") {
+        const res = await kexEditorLogin({ data: { username: username.trim(), password } });
+        startEditor(res.token);
+        return;
+      }
       const creds = mode === "signup"
         ? await kexSignup({ data: { username } })
         : await kexSignin({ data: { username } });
@@ -377,14 +384,16 @@ function Auth({ onDone }: { onDone: (mode: "signup" | "signin") => void }) {
           GET RIPPED<br />
           <span className="inline-block rotate-[-3deg] text-secondary">WITH KEX</span>
         </h1>
-        <div className="mt-8 rounded-2xl border-4 border-primary bg-card p-6 shadow-comic-lg">
-          <h2 className="font-display text-4xl text-primary text-stroke-black">
-            {mode === "signup" ? "JOIN THE GAINS" : "WELCOME BACK"}
+        <div className={`mt-8 rounded-2xl border-4 bg-card p-6 shadow-comic-lg ${mode === "editor" ? "border-secondary" : "border-primary"}`}>
+          <h2 className={`font-display text-4xl text-stroke-black ${mode === "editor" ? "text-secondary" : "text-primary"}`}>
+            {mode === "signup" ? "JOIN THE GAINS" : mode === "signin" ? "WELCOME BACK" : "✏️ EDITOR LOGIN"}
           </h2>
           <p className="mt-2 text-foreground/80">
             {mode === "signup"
               ? "Just pick a username. That's it. No email. No password. Kex hates typing."
-              : "Type your username and Kex will let you in. He remembers you."}
+              : mode === "signin"
+                ? "Type your username and Kex will let you in. He remembers you."
+                : "Editor access only. Sign in to tap-and-rewrite any text in the app for everybody."}
           </p>
           <label className="mt-6 block">
             <div className="font-condensed text-xs font-black uppercase tracking-widest text-secondary">Username</div>
@@ -392,26 +401,48 @@ function Auth({ onDone }: { onDone: (mode: "signup" | "signin") => void }) {
               autoFocus
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
-              placeholder="e.g. kex_the_second"
+              onKeyDown={(e) => e.key === "Enter" && mode !== "editor" && submit()}
+              placeholder={mode === "editor" ? "EDITOR" : "e.g. kex_the_second"}
               className="mt-2 w-full rounded-xl border-2 border-border bg-background px-4 py-3 font-display text-2xl text-foreground focus:border-primary focus:outline-none"
               disabled={loading}
               maxLength={24}
             />
           </label>
+          {mode === "editor" && (
+            <label className="mt-4 block">
+              <div className="font-condensed text-xs font-black uppercase tracking-widest text-secondary">Password</div>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submit()}
+                placeholder="••••••••"
+                className="mt-2 w-full rounded-xl border-2 border-border bg-background px-4 py-3 font-display text-2xl text-foreground focus:border-secondary focus:outline-none"
+                disabled={loading}
+              />
+            </label>
+          )}
           {err && <div className="mt-3 rounded-lg border-2 border-danger bg-danger/10 p-3 text-sm text-danger">{err}</div>}
           <button
-            disabled={loading || !username.trim()}
+            disabled={loading || !username.trim() || (mode === "editor" && !password)}
             onClick={submit}
-            className="mt-5 w-full rounded-xl bg-primary py-4 font-display text-3xl text-primary-foreground shadow-comic-lg disabled:opacity-50"
+            className={`mt-5 w-full rounded-xl py-4 font-display text-3xl shadow-comic-lg disabled:opacity-50 ${mode === "editor" ? "bg-secondary text-secondary-foreground" : "bg-primary text-primary-foreground"}`}
           >
-            {loading ? "…" : mode === "signup" ? "CREATE ME" : "LET ME IN"}
+            {loading ? "…" : mode === "signup" ? "CREATE ME" : mode === "signin" ? "LET ME IN" : "OPEN EDITOR"}
           </button>
+          {mode !== "editor" && (
+            <button
+              onClick={() => setMode(mode === "signup" ? "signin" : "signup")}
+              className="mt-4 w-full font-condensed text-sm font-bold uppercase text-muted-foreground hover:text-primary"
+            >
+              {mode === "signup" ? "Already have a username? Sign in →" : "New here? Sign up →"}
+            </button>
+          )}
           <button
-            onClick={() => setMode(mode === "signup" ? "signin" : "signup")}
-            className="mt-4 w-full font-condensed text-sm font-bold uppercase text-muted-foreground hover:text-primary"
+            onClick={() => { setErr(null); setMode(mode === "editor" ? "signin" : "editor"); }}
+            className="mt-3 w-full font-condensed text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-secondary"
           >
-            {mode === "signup" ? "Already have a username? Sign in →" : "New here? Sign up →"}
+            {mode === "editor" ? "← Back to normal sign in" : "✏️ App editor login"}
           </button>
         </div>
         <p className="mt-6 text-center font-condensed text-xs uppercase tracking-widest text-muted-foreground">
@@ -421,6 +452,7 @@ function Auth({ onDone }: { onDone: (mode: "signup" | "signin") => void }) {
     </div>
   );
 }
+
 
 /* =========================================================
    INTRO  — only shown to first-time signups

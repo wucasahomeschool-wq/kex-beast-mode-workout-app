@@ -806,7 +806,7 @@ function KoinShop({ koins, streak, shields, onBuy, onBack }: {
             className="mt-2 w-full rounded-lg border-2 border-border bg-background p-3 font-display text-lg text-foreground"
           >
             {options
-              .filter((o) => !(kind === "freeze" && o.daysAhead > 0 && o.date !== isoDate(new Date())) || kind === "rest")
+              .filter((o) => (kind === "freeze" ? o.daysAhead <= 0 : true))
               .map((o) => (
                 <option key={o.date} value={o.date} disabled={owned.has(o.date)}>
                   {o.label} — {shieldCost(kind, streak, o.daysAhead)} koins{owned.has(o.date) ? " (already covered)" : ""}

@@ -32,17 +32,39 @@ import {
   newMommyProgress, resetMommyProgress, saveMommyProgress,
   type MommyDay, type MommyProgress,
 } from "@/lib/kex-mommy";
+import { useStreakLeaderboard } from "@/lib/kex-store";
+import {
+  isoDate, shieldCost, shieldableDates, useKoins, useMyShields, buyShield,
+  type ShieldKind,
+} from "@/lib/kex-koins";
+import { CopyProvider, EditorBar, T, useCopyCtx } from "@/lib/kex-copy";
+import { kexEditorLogin } from "@/lib/kex-copy.functions";
 
 export const Route = createFileRoute("/")({
-  component: App,
+  component: AppRoot,
   head: () => ({
     meta: [
       { title: "GET RIPPED WITH KEX — Beast Mode Ab Trainer" },
+      { name: "description", content: "Kex's beast-mode workout app: routines, tournaments, trophies, streaks and Kex Koins." },
+      { property: "og:title", content: "GET RIPPED WITH KEX" },
+      { property: "og:description", content: "Routines, tournaments, trophies, streaks and Kex Koins. Kex is watching." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       { property: "og:image", content: trainer1.url },
       { name: "twitter:image", content: trainer1.url },
     ],
   }),
 });
+
+function AppRoot() {
+  return (
+    <CopyProvider>
+      <App />
+      <EditorBar />
+    </CopyProvider>
+  );
+}
+
 
 type Screen = "auth" | "intro" | "tour" | "home" | "workout" | "custom" | "tournaments" | "trophies" | "prefs" | "mommy" | "mommy-workout";
 type WorkoutItem = { id: string; amount: number; unit: "reps" | "sec" | "min"; meta: Exercise };

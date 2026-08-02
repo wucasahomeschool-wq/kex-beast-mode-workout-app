@@ -1215,13 +1215,14 @@ function CustomBuilder({ excluded, onStart, onBack }: {
             </div>
 
             <button
-              disabled={picked.length < 2}
+              disabled={picked.length < 5}
               onClick={() => onStart(difficulty, picked)}
               className="mt-4 w-full rounded-xl bg-primary py-4 font-display text-3xl text-primary-foreground shadow-comic-lg disabled:opacity-40"
             >
-              START CUSTOM WORKOUT
+              {picked.length < 5 ? `PICK ${5 - picked.length} MORE` : "START CUSTOM WORKOUT"}
             </button>
-            <p className="mt-2 text-center font-condensed text-xs uppercase text-muted-foreground">Stretches auto-appended for the muscles you used.</p>
+            <p className="mt-2 text-center font-condensed text-xs uppercase text-muted-foreground">Minimum 5 exercises. Stretches auto-appended for the muscles you used.</p>
+
           </div>
         </div>
       </div>

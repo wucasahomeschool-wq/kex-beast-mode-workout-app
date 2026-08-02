@@ -94,23 +94,24 @@ function hasOnboarded() { try { return localStorage.getItem(ONBOARD_KEY) === "1"
 function markToured() { try { localStorage.setItem(TOUR_KEY, "1"); } catch {} }
 function hasToured() { try { return localStorage.getItem(TOUR_KEY) === "1"; } catch { return false; } }
 
-function mercyKey(userId: string) { return `kex-mercy-month-${userId}`; }
-function monthKey(d = new Date()) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
-function getLastMercyMonth(userId: string): string | null {
-  try { return localStorage.getItem(mercyKey(userId)); } catch { return null; }
-}
-
 /* =========================================================
    ROOT
    ========================================================= */
 function App() {
   const { ready, userId } = useSession();
   const profile = useProfile(userId);
+  const { editing } = useCopyCtx();
   const [screen, setScreen] = useState<Screen>("auth");
   const [session, setSession] = useState<Session | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const logs = useMyLogs(userId, refreshKey);
-  const stats = useStats(logs);
+  const shields = useMyShields(userId, refreshKey);
+  const shieldDates = useMemo(() => shields.map((s) => s.shield_date), [shields]);
+  const stats = useStats(logs, shieldDates);
+  const { koins } = useKoins({
+    userId, logs, streak: stats.streak, bestStreak: stats.bestStreak,
+    totalWorkouts: stats.totalWorkouts, perDifficulty: stats.perDifficulty, shields, refreshKey,
+  });
   const { excluded, exerciseDifficulty, save: savePrefs, saveExerciseDifficulty } = useMyPreferences(userId);
   const [justSignedUp, setJustSignedUp] = useState(false);
   const loggingRef = useRef(false);
@@ -126,7 +127,7 @@ function App() {
     }
   }, []);
 
-  // Auto-route based on auth state.
+  // Auto-route based on auth state (EDITOR mode can browse without an account).
   useEffect(() => {
     if (!ready) return;
     if (userId) {
@@ -138,10 +139,13 @@ function App() {
         }
         return s;
       });
+    } else if (editing) {
+      setScreen((s) => (s === "auth" ? "home" : s));
     } else {
       setScreen("auth");
     }
-  }, [ready, userId, justSignedUp]);
+  }, [ready, userId, justSignedUp, editing]);
+
 
   // Fire tournament boundary + streak reminders when we know the user.
   const workedOutToday = useMemo(() => {

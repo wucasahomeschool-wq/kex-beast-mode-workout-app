@@ -66,7 +66,7 @@ function AppRoot() {
 }
 
 
-type Screen = "auth" | "intro" | "tour" | "home" | "workout" | "custom" | "tournaments" | "trophies" | "prefs" | "mommy" | "mommy-workout";
+type Screen = "auth" | "intro" | "tour" | "home" | "workout" | "custom" | "tournaments" | "trophies" | "prefs" | "mommy" | "mommy-workout" | "shop" | "streaks";
 type WorkoutItem = { id: string; amount: number; unit: "reps" | "sec" | "min"; meta: Exercise };
 type Session = {
   category: Category | "custom";

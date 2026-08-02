@@ -32,19 +32,41 @@ import {
   newMommyProgress, resetMommyProgress, saveMommyProgress,
   type MommyDay, type MommyProgress,
 } from "@/lib/kex-mommy";
+import { useStreakLeaderboard } from "@/lib/kex-store";
+import {
+  isoDate, shieldCost, shieldableDates, useKoins, useMyShields, buyShield,
+  type ShieldKind,
+} from "@/lib/kex-koins";
+import { CopyProvider, EditorBar, T, useCopyCtx } from "@/lib/kex-copy";
+import { kexEditorLogin } from "@/lib/kex-copy.functions";
 
 export const Route = createFileRoute("/")({
-  component: App,
+  component: AppRoot,
   head: () => ({
     meta: [
       { title: "GET RIPPED WITH KEX — Beast Mode Ab Trainer" },
+      { name: "description", content: "Kex's beast-mode workout app: routines, tournaments, trophies, streaks and Kex Koins." },
+      { property: "og:title", content: "GET RIPPED WITH KEX" },
+      { property: "og:description", content: "Routines, tournaments, trophies, streaks and Kex Koins. Kex is watching." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       { property: "og:image", content: trainer1.url },
       { name: "twitter:image", content: trainer1.url },
     ],
   }),
 });
 
-type Screen = "auth" | "intro" | "tour" | "home" | "workout" | "custom" | "tournaments" | "trophies" | "prefs" | "mommy" | "mommy-workout";
+function AppRoot() {
+  return (
+    <CopyProvider>
+      <App />
+      <EditorBar />
+    </CopyProvider>
+  );
+}
+
+
+type Screen = "auth" | "intro" | "tour" | "home" | "workout" | "custom" | "tournaments" | "trophies" | "prefs" | "mommy" | "mommy-workout" | "shop" | "streaks";
 type WorkoutItem = { id: string; amount: number; unit: "reps" | "sec" | "min"; meta: Exercise };
 type Session = {
   category: Category | "custom";
@@ -72,23 +94,24 @@ function hasOnboarded() { try { return localStorage.getItem(ONBOARD_KEY) === "1"
 function markToured() { try { localStorage.setItem(TOUR_KEY, "1"); } catch {} }
 function hasToured() { try { return localStorage.getItem(TOUR_KEY) === "1"; } catch { return false; } }
 
-function mercyKey(userId: string) { return `kex-mercy-month-${userId}`; }
-function monthKey(d = new Date()) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
-function getLastMercyMonth(userId: string): string | null {
-  try { return localStorage.getItem(mercyKey(userId)); } catch { return null; }
-}
-
 /* =========================================================
    ROOT
    ========================================================= */
 function App() {
   const { ready, userId } = useSession();
   const profile = useProfile(userId);
+  const { editing } = useCopyCtx();
   const [screen, setScreen] = useState<Screen>("auth");
   const [session, setSession] = useState<Session | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const logs = useMyLogs(userId, refreshKey);
-  const stats = useStats(logs);
+  const shields = useMyShields(userId, refreshKey);
+  const shieldDates = useMemo(() => shields.map((s) => s.shield_date), [shields]);
+  const stats = useStats(logs, shieldDates);
+  const { koins } = useKoins({
+    userId, logs, streak: stats.streak, bestStreak: stats.bestStreak,
+    totalWorkouts: stats.totalWorkouts, perDifficulty: stats.perDifficulty, shields, refreshKey,
+  });
   const { excluded, exerciseDifficulty, save: savePrefs, saveExerciseDifficulty } = useMyPreferences(userId);
   const [justSignedUp, setJustSignedUp] = useState(false);
   const loggingRef = useRef(false);
@@ -104,7 +127,7 @@ function App() {
     }
   }, []);
 
-  // Auto-route based on auth state.
+  // Auto-route based on auth state (EDITOR mode can browse without an account).
   useEffect(() => {
     if (!ready) return;
     if (userId) {
@@ -116,10 +139,13 @@ function App() {
         }
         return s;
       });
+    } else if (editing) {
+      setScreen((s) => (s === "auth" ? "home" : s));
     } else {
       setScreen("auth");
     }
-  }, [ready, userId, justSignedUp]);
+  }, [ready, userId, justSignedUp, editing]);
+
 
   // Fire tournament boundary + streak reminders when we know the user.
   const workedOutToday = useMemo(() => {
@@ -235,21 +261,16 @@ function App() {
     }
   };
 
-  const pleadForMercy = async (reason: string) => {
+  const buyStreakShield = async (date: string, kind: ShieldKind, cost: number) => {
     if (!userId) return;
-    await supabase.from("workout_logs").insert({
-      user_id: userId,
-      category: "mercy",
-      difficulty: 0,
-      routine_name: "Pleaded for mercy",
-      is_custom: false,
-      exercises: [{ id: "mercy.excuse", amount: 1, unit: "reps", note: reason } as unknown as { id: string; amount: number; unit: string }],
-      plank_seconds: 0,
-      pullup_reps: 0,
-    });
-    try { localStorage.setItem(mercyKey(userId), monthKey()); } catch {}
+    if (cost > koins.balance) throw new Error("Not enough Kex Koins. Go earn some.");
+    await buyShield(userId, date, kind, cost);
     setRefreshKey((k) => k + 1);
+    notifyReward(kind === "freeze" ? "🧊 STREAK FREEZE ACTIVE" : "😴 REST DAY BOOKED", "Your streak is safe for that day.");
   };
+
+  const viewProfile = profile ?? (editing ? { id: "editor", username: "EDITOR" } : null);
+  const canView = !!(userId || editing);
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden">
@@ -261,22 +282,24 @@ function App() {
       {screen === "intro" && (
         <Intro onDone={() => { markOnboarded(); setScreen(hasToured() ? "home" : "tour"); }} />
       )}
-      {screen === "tour" && profile && (
+      {screen === "tour" && viewProfile && (
         <FeatureTour onDone={() => { markToured(); setScreen("home"); setJustSignedUp(false); }} />
       )}
-      {screen === "home" && profile && userId && (
+      {screen === "home" && viewProfile && canView && (
         <Home
-          profile={profile}
-          userId={userId}
+          profile={viewProfile}
           stats={stats}
+          koinBalance={koins.balance}
+          shieldCount={shields.length}
           onStart={startBuiltWorkout}
           onCustom={() => setScreen("custom")}
           onTournaments={() => setScreen("tournaments")}
           onTrophies={() => setScreen("trophies")}
           onPrefs={() => setScreen("prefs")}
           onMommy={() => setScreen("mommy")}
+          onShop={() => setScreen("shop")}
+          onStreaks={() => setScreen("streaks")}
           onSignOut={async () => { await supabase.auth.signOut(); setScreen("auth"); }}
-          onPlead={pleadForMercy}
         />
       )}
       {screen === "workout" && session && (
@@ -289,14 +312,26 @@ function App() {
       {screen === "custom" && (
         <CustomBuilder excluded={excluded} onStart={startCustomWorkout} onBack={() => setScreen("home")} />
       )}
-      {screen === "tournaments" && userId && <Tournaments myUserId={userId} onBack={() => setScreen("home")} />}
-      {screen === "trophies" && <Trophies stats={stats} myUserId={userId!} onBack={() => setScreen("home")} />}
-      {screen === "prefs" && <Preferences excluded={excluded} exerciseDifficulty={exerciseDifficulty} onSave={savePrefs} onSaveExerciseDifficulty={saveExerciseDifficulty} onBack={() => setScreen("home")} />}
-      {screen === "mommy" && userId && (
-        <MommyHome userId={userId} onBack={() => setScreen("home")} onStartDay={() => setScreen("mommy-workout")} onLogDay={logMommyDay} />
+      {screen === "shop" && canView && (
+        <KoinShop
+          koins={koins}
+          streak={stats.streak}
+          shields={shields}
+          onBuy={buyStreakShield}
+          onBack={() => setScreen("home")}
+        />
       )}
-      {screen === "mommy-workout" && userId && (
-        <MommyWorkout userId={userId} onExit={() => setScreen("mommy")} onDone={() => setScreen("mommy")} onLogDay={logMommyDay} />
+      {screen === "streaks" && canView && (
+        <StreakBoard myUserId={userId ?? ""} onBack={() => setScreen("home")} />
+      )}
+      {screen === "tournaments" && canView && <Tournaments myUserId={userId ?? ""} onBack={() => setScreen("home")} />}
+      {screen === "trophies" && canView && <Trophies stats={stats} myUserId={userId ?? ""} onBack={() => setScreen("home")} />}
+      {screen === "prefs" && <Preferences excluded={excluded} exerciseDifficulty={exerciseDifficulty} onSave={savePrefs} onSaveExerciseDifficulty={saveExerciseDifficulty} onBack={() => setScreen("home")} />}
+      {screen === "mommy" && canView && (
+        <MommyHome userId={userId ?? "editor"} onBack={() => setScreen("home")} onStartDay={() => setScreen("mommy-workout")} onLogDay={logMommyDay} />
+      )}
+      {screen === "mommy-workout" && canView && (
+        <MommyWorkout userId={userId ?? "editor"} onExit={() => setScreen("mommy")} onDone={() => setScreen("mommy")} onLogDay={logMommyDay} />
       )}
     </div>
   );
@@ -311,14 +346,21 @@ function findExerciseById(id: string): Exercise | undefined {
    AUTH  (username-only) — now the FIRST screen
    ========================================================= */
 function Auth({ onDone }: { onDone: (mode: "signup" | "signin") => void }) {
-  const [mode, setMode] = useState<"signup" | "signin">("signup");
+  const [mode, setMode] = useState<"signup" | "signin" | "editor">("signup");
   const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { startEditor } = useCopyCtx();
 
   const submit = async () => {
     setErr(null); setLoading(true);
     try {
+      if (mode === "editor") {
+        const res = await kexEditorLogin({ data: { username: username.trim(), password } });
+        startEditor(res.token);
+        return;
+      }
       const creds = mode === "signup"
         ? await kexSignup({ data: { username } })
         : await kexSignin({ data: { username } });
@@ -342,14 +384,16 @@ function Auth({ onDone }: { onDone: (mode: "signup" | "signin") => void }) {
           GET RIPPED<br />
           <span className="inline-block rotate-[-3deg] text-secondary">WITH KEX</span>
         </h1>
-        <div className="mt-8 rounded-2xl border-4 border-primary bg-card p-6 shadow-comic-lg">
-          <h2 className="font-display text-4xl text-primary text-stroke-black">
-            {mode === "signup" ? "JOIN THE GAINS" : "WELCOME BACK"}
+        <div className={`mt-8 rounded-2xl border-4 bg-card p-6 shadow-comic-lg ${mode === "editor" ? "border-secondary" : "border-primary"}`}>
+          <h2 className={`font-display text-4xl text-stroke-black ${mode === "editor" ? "text-secondary" : "text-primary"}`}>
+            {mode === "signup" ? "JOIN THE GAINS" : mode === "signin" ? "WELCOME BACK" : "✏️ EDITOR LOGIN"}
           </h2>
           <p className="mt-2 text-foreground/80">
             {mode === "signup"
               ? "Just pick a username. That's it. No email. No password. Kex hates typing."
-              : "Type your username and Kex will let you in. He remembers you."}
+              : mode === "signin"
+                ? "Type your username and Kex will let you in. He remembers you."
+                : "Editor access only. Sign in to tap-and-rewrite any text in the app for everybody."}
           </p>
           <label className="mt-6 block">
             <div className="font-condensed text-xs font-black uppercase tracking-widest text-secondary">Username</div>
@@ -357,26 +401,48 @@ function Auth({ onDone }: { onDone: (mode: "signup" | "signin") => void }) {
               autoFocus
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
-              placeholder="e.g. kex_the_second"
+              onKeyDown={(e) => e.key === "Enter" && mode !== "editor" && submit()}
+              placeholder={mode === "editor" ? "EDITOR" : "e.g. kex_the_second"}
               className="mt-2 w-full rounded-xl border-2 border-border bg-background px-4 py-3 font-display text-2xl text-foreground focus:border-primary focus:outline-none"
               disabled={loading}
               maxLength={24}
             />
           </label>
+          {mode === "editor" && (
+            <label className="mt-4 block">
+              <div className="font-condensed text-xs font-black uppercase tracking-widest text-secondary">Password</div>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submit()}
+                placeholder="••••••••"
+                className="mt-2 w-full rounded-xl border-2 border-border bg-background px-4 py-3 font-display text-2xl text-foreground focus:border-secondary focus:outline-none"
+                disabled={loading}
+              />
+            </label>
+          )}
           {err && <div className="mt-3 rounded-lg border-2 border-danger bg-danger/10 p-3 text-sm text-danger">{err}</div>}
           <button
-            disabled={loading || !username.trim()}
+            disabled={loading || !username.trim() || (mode === "editor" && !password)}
             onClick={submit}
-            className="mt-5 w-full rounded-xl bg-primary py-4 font-display text-3xl text-primary-foreground shadow-comic-lg disabled:opacity-50"
+            className={`mt-5 w-full rounded-xl py-4 font-display text-3xl shadow-comic-lg disabled:opacity-50 ${mode === "editor" ? "bg-secondary text-secondary-foreground" : "bg-primary text-primary-foreground"}`}
           >
-            {loading ? "…" : mode === "signup" ? "CREATE ME" : "LET ME IN"}
+            {loading ? "…" : mode === "signup" ? "CREATE ME" : mode === "signin" ? "LET ME IN" : "OPEN EDITOR"}
           </button>
+          {mode !== "editor" && (
+            <button
+              onClick={() => setMode(mode === "signup" ? "signin" : "signup")}
+              className="mt-4 w-full font-condensed text-sm font-bold uppercase text-muted-foreground hover:text-primary"
+            >
+              {mode === "signup" ? "Already have a username? Sign in →" : "New here? Sign up →"}
+            </button>
+          )}
           <button
-            onClick={() => setMode(mode === "signup" ? "signin" : "signup")}
-            className="mt-4 w-full font-condensed text-sm font-bold uppercase text-muted-foreground hover:text-primary"
+            onClick={() => { setErr(null); setMode(mode === "editor" ? "signin" : "editor"); }}
+            className="mt-3 w-full font-condensed text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-secondary"
           >
-            {mode === "signup" ? "Already have a username? Sign in →" : "New here? Sign up →"}
+            {mode === "editor" ? "← Back to normal sign in" : "✏️ App editor login"}
           </button>
         </div>
         <p className="mt-6 text-center font-condensed text-xs uppercase tracking-widest text-muted-foreground">
@@ -386,6 +452,7 @@ function Auth({ onDone }: { onDone: (mode: "signup" | "signin") => void }) {
     </div>
   );
 }
+
 
 /* =========================================================
    INTRO  — only shown to first-time signups
@@ -577,25 +644,24 @@ function FeatureTour({ onDone }: { onDone: () => void }) {
    HOME
    ========================================================= */
 function Home({
-  profile, userId, stats, onStart, onCustom, onTournaments, onTrophies, onPrefs, onMommy, onSignOut, onPlead,
+  profile, stats, koinBalance, shieldCount, onStart, onCustom, onTournaments, onTrophies, onPrefs, onMommy, onShop, onStreaks, onSignOut,
 }: {
   profile: { username: string };
-  userId: string;
   stats: ReturnType<typeof useStats>;
+  koinBalance: number;
+  shieldCount: number;
   onStart: (c: Category, d: DifficultyId) => void;
   onCustom: () => void;
   onTournaments: () => void;
   onTrophies: () => void;
   onPrefs: () => void;
   onMommy: () => void;
+  onShop: () => void;
+  onStreaks: () => void;
   onSignOut: () => void;
-  onPlead: (reason: string) => Promise<void>;
 }) {
   const [category, setCategory] = useState<Category>("core");
   const [difficulty, setDifficulty] = useState<DifficultyId>(3);
-  const [mercyOpen, setMercyOpen] = useState(false);
-  const [mercyUsedMonth, setMercyUsedMonth] = useState<string | null>(() => getLastMercyMonth(userId));
-  const mercyAvailable = mercyUsedMonth !== monthKey();
   return (
     <div className="relative min-h-screen px-5 py-6">
       <div className="mx-auto max-w-5xl">
@@ -603,39 +669,29 @@ function Home({
 
         <div className="mt-3">
           <button
-            onClick={() => setMercyOpen(true)}
-            disabled={!mercyAvailable}
-            className={`w-full rounded-xl border-2 px-4 py-3 text-left font-condensed text-sm font-black uppercase shadow-comic transition ${mercyAvailable ? "border-danger bg-danger/10 text-danger hover:bg-danger/20" : "border-border bg-card text-muted-foreground opacity-60"}`}
+            onClick={onShop}
+            className="w-full rounded-xl border-2 border-secondary bg-secondary/10 px-4 py-3 text-left font-condensed text-sm font-black uppercase text-secondary shadow-comic transition hover:bg-secondary/20"
           >
-            🙏 PLEAD FOR MERCY FROM KEX {mercyAvailable ? "· save your streak (1/month)" : "· already used this month"}
+            🪙 <T k="home.shopBtn">KEX KOINS</T>: {koinBalance} · <T k="home.shopBtn2">BUY A STREAK FREEZE OR REST DAY</T>{shieldCount > 0 ? ` · ${shieldCount} owned` : ""}
           </button>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
           <NavBtn label="TOURNAMENTS" emoji="🏆" onClick={onTournaments} />
+          <NavBtn label="STREAK BOARD" emoji="🔥" onClick={onStreaks} />
           <NavBtn label="TROPHIES" emoji="🏅" onClick={onTrophies} />
+          <NavBtn label="KOIN SHOP" emoji="🪙" onClick={onShop} />
           <NavBtn label="CUSTOM" emoji="🛠️" onClick={onCustom} />
           <NavBtn label="PREFERENCES" emoji="⚙️" onClick={onPrefs} />
           <NavBtn label="MOMMY ❤️" emoji="💗" onClick={onMommy} />
         </div>
 
-        {mercyOpen && (
-          <MercyModal
-            onClose={() => setMercyOpen(false)}
-            onSubmit={async (reason) => {
-              await onPlead(reason);
-              setMercyUsedMonth(monthKey());
-              setMercyOpen(false);
-            }}
-          />
-        )}
-
-
         <StatsStrip stats={stats} />
 
         <h2 className="mt-8 font-display text-5xl md:text-6xl text-foreground">
-          Pick your <span className="text-secondary">poison</span>.
+          <T k="home.pickHeading">Pick your poison.</T>
         </h2>
+
         <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-5">
           <CategoryCard title="CORE" subtitle="The main event" emoji="🔥" img={CATEGORY_IMG.core} selected={category === "core"} onSelect={() => setCategory("core")} badge="★ MAIN" />
           <CategoryCard title="UPPER" subtitle="Side quest" emoji="💪" img={CATEGORY_IMG.upper} selected={category === "upper"} onSelect={() => setCategory("upper")} />
@@ -716,98 +772,173 @@ function StatChip({ label, value, accent }: { label: string; value: string; acce
 }
 
 /* =========================================================
-   MERCY MODAL — plead your case, once per month
+   KEX KOIN SHOP — streak freezes & rest days
    ========================================================= */
-const MERCY_OPTIONS: { id: string; label: string; kex: string }[] = [
-  { id: "sick", label: "I was physically unable (sick/injured)! Sorry Kex!", kex: "Ugh, FINE. Rest up. If you're not back in 48 hours I'm sending a search party. And by search party I mean me, on my scooter." },
-  { id: "busy", label: "I was too busy! Sorry Kex!", kex: "Too busy?? I'm 7 and I built an entire ab program. But okay. Just this once. I'll see you tomorrow. On the mat." },
-  { id: "device", label: "I didn't have access to my device! Sorry Kex!", kex: "Excuse accepted, but push-ups do not require Wi-Fi, my friend. Just saying." },
-  { id: "sore", label: "Your workout yesterday was really hard and I'm so sore I can hardly move! Sorry Kex!", kex: "Music to my ears. That's the sound of GAINS. Ice bath, stretch, and DOUBLE reps tomorrow. Deal? Deal." },
-  { id: "travel", label: "I was traveling and couldn't get to a workout spot! Sorry Kex!", kex: "Excuses, excuses. But you know hotel floors are also floors, right? Anyway — mercy granted. Once." },
-  { id: "sleep", label: "I didn't get enough sleep and I feel like a zombie! Sorry Kex!", kex: "Recovery is a real thing, so I'll allow it. But if I catch you scrolling TikTok past 11pm I'm taking away your streak MYSELF." },
-  { id: "family", label: "Family emergency! Sorry Kex!", kex: "Family first. Always. I hope everyone's okay. Come back when you can — I'll be here doing planks." },
-  { id: "period", label: "Not feeling well today! Sorry Kex!", kex: "Listen to your body. I'll pretend to be mad but secretly I respect it. Tomorrow though — full send." },
-  { id: "other", label: "Other (I'll explain to Kex myself)…", kex: "Hmm. I'll allow it, but I have my eye on you. This better be good." },
-];
+function KoinShop({ koins, streak, shields, onBuy, onBack }: {
+  koins: { workouts: number; trophies: number; tournaments: number; streak: number; spent: number; balance: number };
+  streak: number;
+  shields: { shield_date: string; kind: string; cost: number }[];
+  onBuy: (date: string, kind: ShieldKind, cost: number) => Promise<void>;
+  onBack: () => void;
+}) {
+  const [kind, setKind] = useState<ShieldKind>("freeze");
+  const [date, setDate] = useState<string>(isoDate(new Date()));
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-function MercyModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (reason: string) => Promise<void> }) {
-  const [selected, setSelected] = useState<string | null>(null);
-  const [otherText, setOtherText] = useState("");
-  const [confirmed, setConfirmed] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const opt = MERCY_OPTIONS.find((o) => o.id === selected);
-  const canSubmit = !!opt && (opt.id !== "other" || otherText.trim().length > 2);
-
-  const submit = async () => {
-    if (!opt || !canSubmit) return;
-    setSubmitting(true);
-    const reason = opt.id === "other" ? `Other: ${otherText.trim()}` : opt.label;
-    await onSubmit(reason);
-    setConfirmed(true);
-    setSubmitting(false);
-  };
+  const options = useMemo(() => shieldableDates(), []);
+  const owned = useMemo(() => new Set(shields.map((s) => s.shield_date)), [shields]);
+  const chosen = options.find((o) => o.date === date) ?? options[1];
+  const cost = shieldCost(kind, streak, chosen.daysAhead);
+  const affordable = cost <= koins.balance;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 sm:items-center">
-      <div className="w-full max-w-lg rounded-2xl border-4 border-primary bg-card p-5 shadow-comic-lg">
-        {confirmed && opt ? (
-          <>
-            <div className="text-center">
-              <div className="text-6xl">🤨</div>
-              <div className="mt-2 font-condensed text-xs font-black uppercase tracking-widest text-secondary">KEX'S RULING</div>
-              <h2 className="mt-1 font-display text-3xl text-primary text-stroke-black">MERCY GRANTED</h2>
-            </div>
-            <div className="mt-4 rounded-xl border-2 border-primary bg-primary/10 p-4 text-foreground">
-              <div className="font-condensed text-xs font-black uppercase text-primary">Kex says:</div>
-              <p className="mt-1 text-lg">"{opt.kex}"</p>
-            </div>
-            <p className="mt-3 text-center font-condensed text-xs uppercase text-muted-foreground">Your streak is safe for today. Don't make Kex regret this.</p>
-            <button onClick={onClose} className="mt-4 w-full rounded-xl bg-primary py-3 font-display text-2xl text-primary-foreground shadow-comic-lg">GOT IT, KEX</button>
-          </>
-        ) : (
-          <>
-            <div className="text-center">
-              <div className="text-5xl">🙏</div>
-              <h2 className="mt-1 font-display text-3xl text-primary text-stroke-black">PLEAD FOR MERCY</h2>
-              <p className="mt-1 text-sm text-foreground/80">One free pass per month. Tell Kex why you can't work out today.</p>
-            </div>
-            <div className="mt-4 max-h-[45vh] space-y-2 overflow-y-auto pr-1">
-              {MERCY_OPTIONS.map((o) => (
-                <button
-                  key={o.id}
-                  onClick={() => setSelected(o.id)}
-                  className={`w-full rounded-xl border-2 p-3 text-left transition ${selected === o.id ? "border-primary bg-primary/10" : "border-border bg-background hover:border-primary/60"}`}
-                >
-                  <div className="font-condensed text-sm font-bold text-foreground">{o.label}</div>
-                </button>
+    <div className="min-h-screen px-5 py-6 pb-24">
+      <div className="mx-auto max-w-3xl">
+        <button onClick={onBack} className="font-condensed text-sm font-bold uppercase text-muted-foreground hover:text-primary">← Home</button>
+        <h1 className="mt-2 font-display text-5xl text-primary text-stroke-black">🪙 <T k="shop.title">KEX KOIN SHOP</T></h1>
+        <p className="mt-1 text-foreground/80">
+          <T k="shop.blurb">Koins are earned by sweating. Spend them to protect your streak when life happens.</T>
+        </p>
+
+        <div className="mt-4 rounded-2xl border-4 border-secondary bg-card p-5 shadow-comic-lg">
+          <div className="font-condensed text-xs font-black uppercase tracking-widest text-secondary"><T k="shop.balanceLabel">YOUR BALANCE</T></div>
+          <div className="font-display text-6xl text-primary">{koins.balance} <span className="text-2xl text-foreground">KOINS</span></div>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5 font-condensed text-xs uppercase text-muted-foreground">
+            <div>Workouts<div className="font-display text-lg text-foreground">+{koins.workouts}</div></div>
+            <div>Trophies<div className="font-display text-lg text-foreground">+{koins.trophies}</div></div>
+            <div>Tournaments<div className="font-display text-lg text-foreground">+{koins.tournaments}</div></div>
+            <div>Streak<div className="font-display text-lg text-foreground">+{koins.streak}</div></div>
+            <div>Spent<div className="font-display text-lg text-danger">−{koins.spent}</div></div>
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            onClick={() => setKind("freeze")}
+            className={`rounded-xl border-2 p-4 text-left ${kind === "freeze" ? "border-primary bg-primary/10 shadow-comic" : "border-border bg-card"}`}
+          >
+            <div className="font-display text-2xl text-foreground">🧊 <T k="shop.freezeName">STREAK FREEZE</T></div>
+            <div className="mt-1 text-sm text-muted-foreground"><T k="shop.freezeDesc">You already missed the day. Freeze it and keep the streak. 24-hour window only.</T></div>
+          </button>
+          <button
+            onClick={() => setKind("rest")}
+            className={`rounded-xl border-2 p-4 text-left ${kind === "rest" ? "border-primary bg-primary/10 shadow-comic" : "border-border bg-card"}`}
+          >
+            <div className="font-display text-2xl text-foreground">😴 <T k="shop.restName">REST DAY</T></div>
+            <div className="mt-1 text-sm text-muted-foreground"><T k="shop.restDesc">Planning ahead? Book a rest day. Way cheaper, and cheaper still the earlier you buy.</T></div>
+          </button>
+        </div>
+
+        <div className="mt-5 rounded-xl border-2 border-border bg-card p-4">
+          <div className="font-condensed text-xs font-black uppercase text-secondary"><T k="shop.pickDay">PICK THE DAY TO COVER</T></div>
+          <select
+            value={date}
+            onChange={(e) => { setDate(e.target.value); setErr(null); }}
+            className="mt-2 w-full rounded-lg border-2 border-border bg-background p-3 font-display text-lg text-foreground"
+          >
+            {options
+              .filter((o) => (kind === "freeze" ? o.daysAhead <= 0 : true))
+              .map((o) => (
+                <option key={o.date} value={o.date} disabled={owned.has(o.date)}>
+                  {o.label} — {shieldCost(kind, streak, o.daysAhead)} koins{owned.has(o.date) ? " (already covered)" : ""}
+                </option>
               ))}
-              {selected === "other" && (
-                <textarea
-                  value={otherText}
-                  onChange={(e) => setOtherText(e.target.value)}
-                  placeholder="Explain yourself to Kex…"
-                  maxLength={280}
-                  className="mt-1 w-full rounded-xl border-2 border-primary bg-background p-3 font-condensed text-sm text-foreground focus:outline-none"
-                  rows={3}
-                />
-              )}
+          </select>
+          <div className="mt-3 flex items-end justify-between gap-3">
+            <div>
+              <div className="font-condensed text-xs uppercase text-muted-foreground">Price</div>
+              <div className="font-display text-4xl text-primary">{cost} koins</div>
+              <div className="font-condensed text-[11px] uppercase text-muted-foreground">
+                Streak of {streak} · {chosen.daysAhead > 0 ? `${Math.min(chosen.daysAhead, 14) * 3}% early-bird discount${chosen.daysAhead > 14 ? " (max)" : ""}` : "no discount"}
+              </div>
             </div>
-            <div className="mt-4 flex gap-2">
-              <button onClick={onClose} className="rounded-xl border-2 border-border bg-card px-4 py-3 font-display text-lg text-foreground">CANCEL</button>
-              <button
-                onClick={submit}
-                disabled={!canSubmit || submitting}
-                className="flex-1 rounded-xl bg-primary py-3 font-display text-2xl text-primary-foreground shadow-comic-lg disabled:opacity-40"
-              >
-                {submitting ? "…" : "SUBMIT PLEA"}
-              </button>
-            </div>
-          </>
-        )}
+            <button
+              disabled={busy || !affordable || owned.has(date)}
+              onClick={async () => {
+                setBusy(true); setErr(null);
+                try { await onBuy(date, kind, cost); } catch (e) { setErr(e instanceof Error ? e.message : "Purchase failed."); }
+                finally { setBusy(false); }
+              }}
+              className="rounded-xl bg-primary px-6 py-4 font-display text-2xl text-primary-foreground shadow-comic-lg disabled:opacity-40"
+            >
+              {busy ? "…" : owned.has(date) ? "COVERED" : affordable ? "BUY" : "TOO POOR"}
+            </button>
+          </div>
+          {err && <div className="mt-2 font-condensed text-sm font-bold uppercase text-danger">{err}</div>}
+        </div>
+
+        <div className="mt-5 rounded-xl border-2 border-border bg-card">
+          <div className="border-b-2 border-border p-3 font-display text-2xl text-foreground"><T k="shop.owned">DAYS YOU'VE COVERED</T></div>
+          {shields.length === 0 ? (
+            <div className="p-4 text-center text-muted-foreground"><T k="shop.ownedEmpty">Nothing yet. Kex approves.</T></div>
+          ) : (
+            [...shields].sort((a, b) => a.shield_date.localeCompare(b.shield_date)).map((s) => (
+              <div key={s.shield_date} className="flex items-center justify-between border-b border-border p-3">
+                <div className="font-display text-lg text-foreground">{s.kind === "freeze" ? "🧊" : "😴"} {s.shield_date}</div>
+                <div className="font-condensed text-xs uppercase text-muted-foreground">{s.kind === "freeze" ? "Streak Freeze" : "Rest Day"} · {s.cost} koins</div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="mt-5 rounded-xl border-2 border-dashed border-secondary p-4 text-sm text-foreground/80">
+          <div className="font-condensed text-xs font-black uppercase text-secondary"><T k="shop.howEarnTitle">HOW TO EARN KOINS</T></div>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li><T k="shop.earn1">Finish a workout — harder levels pay way more.</T></li>
+            <li><T k="shop.earn2">Unlock trophies — the rarer the trophy, the bigger the payout.</T></li>
+            <li><T k="shop.earn3">Place high in tournaments — 1st place is a jackpot.</T></li>
+            <li><T k="shop.earn4">Hold a streak — every day you hold adds koins.</T></li>
+          </ul>
+        </div>
       </div>
     </div>
   );
 }
+
+/* =========================================================
+   PERSISTENT STREAK LEADERBOARD
+   ========================================================= */
+function StreakBoard({ myUserId, onBack }: { myUserId: string; onBack: () => void }) {
+  const rows = useStreakLeaderboard();
+  return (
+    <div className="min-h-screen px-5 py-6 pb-24">
+      <div className="mx-auto max-w-3xl">
+        <button onClick={onBack} className="font-condensed text-sm font-bold uppercase text-muted-foreground hover:text-primary">← Home</button>
+        <h1 className="mt-2 font-display text-5xl text-primary text-stroke-black">🔥 <T k="streaks.title">STREAK BOARD</T></h1>
+        <p className="mt-1 text-foreground/80">
+          <T k="streaks.blurb">This one never resets. Every user, ranked by their current streak. Sundays don't count against you, and shielded days count as covered.</T>
+        </p>
+
+        <div className="mt-5 rounded-xl border-2 border-border bg-card">
+          <div className="flex items-center justify-between border-b-2 border-border p-3">
+            <div className="font-display text-2xl text-foreground">ALL-TIME STREAK RANKINGS</div>
+            <div className="font-condensed text-[10px] uppercase text-muted-foreground">CURRENT · BEST</div>
+          </div>
+          {rows == null ? (
+            <div className="p-4 text-center text-muted-foreground">Loading…</div>
+          ) : rows.length === 0 ? (
+            <div className="p-4 text-center text-muted-foreground">Nobody here yet. Be the first!</div>
+          ) : (
+            rows.map((r, i) => (
+              <div key={r.user_id} className={`flex items-center justify-between border-b border-border p-3 ${r.user_id === myUserId ? "bg-primary/10" : ""}`}>
+                <div className="flex items-center gap-3">
+                  <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full font-display text-lg ${i === 0 ? "bg-primary text-primary-foreground" : i < 3 ? "bg-secondary text-secondary-foreground" : "bg-muted text-foreground"}`}>{i + 1}</span>
+                  <span className="font-display text-lg text-foreground">@{r.username}{r.user_id === myUserId ? " (you)" : ""}</span>
+                </div>
+                <div className="text-right">
+                  <div className="font-display text-xl text-primary">🔥 {r.streak}</div>
+                  <div className="font-condensed text-[10px] uppercase text-muted-foreground">best {r.best} · {r.days} active days</div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CategoryCard({ title, subtitle, emoji, img, selected, onSelect, badge }: {
   title: string; subtitle: string; emoji: string; img: string; selected: boolean; onSelect: () => void; badge?: string;
 }) {
@@ -1116,13 +1247,14 @@ function CustomBuilder({ excluded, onStart, onBack }: {
             </div>
 
             <button
-              disabled={picked.length < 2}
+              disabled={picked.length < 5}
               onClick={() => onStart(difficulty, picked)}
               className="mt-4 w-full rounded-xl bg-primary py-4 font-display text-3xl text-primary-foreground shadow-comic-lg disabled:opacity-40"
             >
-              START CUSTOM WORKOUT
+              {picked.length < 5 ? `PICK ${5 - picked.length} MORE` : "START CUSTOM WORKOUT"}
             </button>
-            <p className="mt-2 text-center font-condensed text-xs uppercase text-muted-foreground">Stretches auto-appended for the muscles you used.</p>
+            <p className="mt-2 text-center font-condensed text-xs uppercase text-muted-foreground">Minimum 5 exercises. Stretches auto-appended for the muscles you used.</p>
+
           </div>
         </div>
       </div>

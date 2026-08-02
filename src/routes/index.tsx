@@ -612,25 +612,24 @@ function FeatureTour({ onDone }: { onDone: () => void }) {
    HOME
    ========================================================= */
 function Home({
-  profile, userId, stats, onStart, onCustom, onTournaments, onTrophies, onPrefs, onMommy, onSignOut, onPlead,
+  profile, stats, koinBalance, shieldCount, onStart, onCustom, onTournaments, onTrophies, onPrefs, onMommy, onShop, onStreaks, onSignOut,
 }: {
   profile: { username: string };
-  userId: string;
   stats: ReturnType<typeof useStats>;
+  koinBalance: number;
+  shieldCount: number;
   onStart: (c: Category, d: DifficultyId) => void;
   onCustom: () => void;
   onTournaments: () => void;
   onTrophies: () => void;
   onPrefs: () => void;
   onMommy: () => void;
+  onShop: () => void;
+  onStreaks: () => void;
   onSignOut: () => void;
-  onPlead: (reason: string) => Promise<void>;
 }) {
   const [category, setCategory] = useState<Category>("core");
   const [difficulty, setDifficulty] = useState<DifficultyId>(3);
-  const [mercyOpen, setMercyOpen] = useState(false);
-  const [mercyUsedMonth, setMercyUsedMonth] = useState<string | null>(() => getLastMercyMonth(userId));
-  const mercyAvailable = mercyUsedMonth !== monthKey();
   return (
     <div className="relative min-h-screen px-5 py-6">
       <div className="mx-auto max-w-5xl">
@@ -638,39 +637,29 @@ function Home({
 
         <div className="mt-3">
           <button
-            onClick={() => setMercyOpen(true)}
-            disabled={!mercyAvailable}
-            className={`w-full rounded-xl border-2 px-4 py-3 text-left font-condensed text-sm font-black uppercase shadow-comic transition ${mercyAvailable ? "border-danger bg-danger/10 text-danger hover:bg-danger/20" : "border-border bg-card text-muted-foreground opacity-60"}`}
+            onClick={onShop}
+            className="w-full rounded-xl border-2 border-secondary bg-secondary/10 px-4 py-3 text-left font-condensed text-sm font-black uppercase text-secondary shadow-comic transition hover:bg-secondary/20"
           >
-            🙏 PLEAD FOR MERCY FROM KEX {mercyAvailable ? "· save your streak (1/month)" : "· already used this month"}
+            🪙 <T k="home.shopBtn">KEX KOINS</T>: {koinBalance} · <T k="home.shopBtn2">BUY A STREAK FREEZE OR REST DAY</T>{shieldCount > 0 ? ` · ${shieldCount} owned` : ""}
           </button>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
           <NavBtn label="TOURNAMENTS" emoji="🏆" onClick={onTournaments} />
+          <NavBtn label="STREAK BOARD" emoji="🔥" onClick={onStreaks} />
           <NavBtn label="TROPHIES" emoji="🏅" onClick={onTrophies} />
+          <NavBtn label="KOIN SHOP" emoji="🪙" onClick={onShop} />
           <NavBtn label="CUSTOM" emoji="🛠️" onClick={onCustom} />
           <NavBtn label="PREFERENCES" emoji="⚙️" onClick={onPrefs} />
           <NavBtn label="MOMMY ❤️" emoji="💗" onClick={onMommy} />
         </div>
 
-        {mercyOpen && (
-          <MercyModal
-            onClose={() => setMercyOpen(false)}
-            onSubmit={async (reason) => {
-              await onPlead(reason);
-              setMercyUsedMonth(monthKey());
-              setMercyOpen(false);
-            }}
-          />
-        )}
-
-
         <StatsStrip stats={stats} />
 
         <h2 className="mt-8 font-display text-5xl md:text-6xl text-foreground">
-          Pick your <span className="text-secondary">poison</span>.
+          <T k="home.pickHeading">Pick your poison.</T>
         </h2>
+
         <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-5">
           <CategoryCard title="CORE" subtitle="The main event" emoji="🔥" img={CATEGORY_IMG.core} selected={category === "core"} onSelect={() => setCategory("core")} badge="★ MAIN" />
           <CategoryCard title="UPPER" subtitle="Side quest" emoji="💪" img={CATEGORY_IMG.upper} selected={category === "upper"} onSelect={() => setCategory("upper")} />

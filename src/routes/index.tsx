@@ -740,98 +740,173 @@ function StatChip({ label, value, accent }: { label: string; value: string; acce
 }
 
 /* =========================================================
-   MERCY MODAL — plead your case, once per month
+   KEX KOIN SHOP — streak freezes & rest days
    ========================================================= */
-const MERCY_OPTIONS: { id: string; label: string; kex: string }[] = [
-  { id: "sick", label: "I was physically unable (sick/injured)! Sorry Kex!", kex: "Ugh, FINE. Rest up. If you're not back in 48 hours I'm sending a search party. And by search party I mean me, on my scooter." },
-  { id: "busy", label: "I was too busy! Sorry Kex!", kex: "Too busy?? I'm 7 and I built an entire ab program. But okay. Just this once. I'll see you tomorrow. On the mat." },
-  { id: "device", label: "I didn't have access to my device! Sorry Kex!", kex: "Excuse accepted, but push-ups do not require Wi-Fi, my friend. Just saying." },
-  { id: "sore", label: "Your workout yesterday was really hard and I'm so sore I can hardly move! Sorry Kex!", kex: "Music to my ears. That's the sound of GAINS. Ice bath, stretch, and DOUBLE reps tomorrow. Deal? Deal." },
-  { id: "travel", label: "I was traveling and couldn't get to a workout spot! Sorry Kex!", kex: "Excuses, excuses. But you know hotel floors are also floors, right? Anyway — mercy granted. Once." },
-  { id: "sleep", label: "I didn't get enough sleep and I feel like a zombie! Sorry Kex!", kex: "Recovery is a real thing, so I'll allow it. But if I catch you scrolling TikTok past 11pm I'm taking away your streak MYSELF." },
-  { id: "family", label: "Family emergency! Sorry Kex!", kex: "Family first. Always. I hope everyone's okay. Come back when you can — I'll be here doing planks." },
-  { id: "period", label: "Not feeling well today! Sorry Kex!", kex: "Listen to your body. I'll pretend to be mad but secretly I respect it. Tomorrow though — full send." },
-  { id: "other", label: "Other (I'll explain to Kex myself)…", kex: "Hmm. I'll allow it, but I have my eye on you. This better be good." },
-];
+function KoinShop({ koins, streak, shields, onBuy, onBack }: {
+  koins: { workouts: number; trophies: number; tournaments: number; streak: number; spent: number; balance: number };
+  streak: number;
+  shields: { shield_date: string; kind: string; cost: number }[];
+  onBuy: (date: string, kind: ShieldKind, cost: number) => Promise<void>;
+  onBack: () => void;
+}) {
+  const [kind, setKind] = useState<ShieldKind>("freeze");
+  const [date, setDate] = useState<string>(isoDate(new Date()));
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-function MercyModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (reason: string) => Promise<void> }) {
-  const [selected, setSelected] = useState<string | null>(null);
-  const [otherText, setOtherText] = useState("");
-  const [confirmed, setConfirmed] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const opt = MERCY_OPTIONS.find((o) => o.id === selected);
-  const canSubmit = !!opt && (opt.id !== "other" || otherText.trim().length > 2);
-
-  const submit = async () => {
-    if (!opt || !canSubmit) return;
-    setSubmitting(true);
-    const reason = opt.id === "other" ? `Other: ${otherText.trim()}` : opt.label;
-    await onSubmit(reason);
-    setConfirmed(true);
-    setSubmitting(false);
-  };
+  const options = useMemo(() => shieldableDates(), []);
+  const owned = useMemo(() => new Set(shields.map((s) => s.shield_date)), [shields]);
+  const chosen = options.find((o) => o.date === date) ?? options[1];
+  const cost = shieldCost(kind, streak, chosen.daysAhead);
+  const affordable = cost <= koins.balance;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 sm:items-center">
-      <div className="w-full max-w-lg rounded-2xl border-4 border-primary bg-card p-5 shadow-comic-lg">
-        {confirmed && opt ? (
-          <>
-            <div className="text-center">
-              <div className="text-6xl">🤨</div>
-              <div className="mt-2 font-condensed text-xs font-black uppercase tracking-widest text-secondary">KEX'S RULING</div>
-              <h2 className="mt-1 font-display text-3xl text-primary text-stroke-black">MERCY GRANTED</h2>
-            </div>
-            <div className="mt-4 rounded-xl border-2 border-primary bg-primary/10 p-4 text-foreground">
-              <div className="font-condensed text-xs font-black uppercase text-primary">Kex says:</div>
-              <p className="mt-1 text-lg">"{opt.kex}"</p>
-            </div>
-            <p className="mt-3 text-center font-condensed text-xs uppercase text-muted-foreground">Your streak is safe for today. Don't make Kex regret this.</p>
-            <button onClick={onClose} className="mt-4 w-full rounded-xl bg-primary py-3 font-display text-2xl text-primary-foreground shadow-comic-lg">GOT IT, KEX</button>
-          </>
-        ) : (
-          <>
-            <div className="text-center">
-              <div className="text-5xl">🙏</div>
-              <h2 className="mt-1 font-display text-3xl text-primary text-stroke-black">PLEAD FOR MERCY</h2>
-              <p className="mt-1 text-sm text-foreground/80">One free pass per month. Tell Kex why you can't work out today.</p>
-            </div>
-            <div className="mt-4 max-h-[45vh] space-y-2 overflow-y-auto pr-1">
-              {MERCY_OPTIONS.map((o) => (
-                <button
-                  key={o.id}
-                  onClick={() => setSelected(o.id)}
-                  className={`w-full rounded-xl border-2 p-3 text-left transition ${selected === o.id ? "border-primary bg-primary/10" : "border-border bg-background hover:border-primary/60"}`}
-                >
-                  <div className="font-condensed text-sm font-bold text-foreground">{o.label}</div>
-                </button>
+    <div className="min-h-screen px-5 py-6 pb-24">
+      <div className="mx-auto max-w-3xl">
+        <button onClick={onBack} className="font-condensed text-sm font-bold uppercase text-muted-foreground hover:text-primary">← Home</button>
+        <h1 className="mt-2 font-display text-5xl text-primary text-stroke-black">🪙 <T k="shop.title">KEX KOIN SHOP</T></h1>
+        <p className="mt-1 text-foreground/80">
+          <T k="shop.blurb">Koins are earned by sweating. Spend them to protect your streak when life happens.</T>
+        </p>
+
+        <div className="mt-4 rounded-2xl border-4 border-secondary bg-card p-5 shadow-comic-lg">
+          <div className="font-condensed text-xs font-black uppercase tracking-widest text-secondary"><T k="shop.balanceLabel">YOUR BALANCE</T></div>
+          <div className="font-display text-6xl text-primary">{koins.balance} <span className="text-2xl text-foreground">KOINS</span></div>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5 font-condensed text-xs uppercase text-muted-foreground">
+            <div>Workouts<div className="font-display text-lg text-foreground">+{koins.workouts}</div></div>
+            <div>Trophies<div className="font-display text-lg text-foreground">+{koins.trophies}</div></div>
+            <div>Tournaments<div className="font-display text-lg text-foreground">+{koins.tournaments}</div></div>
+            <div>Streak<div className="font-display text-lg text-foreground">+{koins.streak}</div></div>
+            <div>Spent<div className="font-display text-lg text-danger">−{koins.spent}</div></div>
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            onClick={() => setKind("freeze")}
+            className={`rounded-xl border-2 p-4 text-left ${kind === "freeze" ? "border-primary bg-primary/10 shadow-comic" : "border-border bg-card"}`}
+          >
+            <div className="font-display text-2xl text-foreground">🧊 <T k="shop.freezeName">STREAK FREEZE</T></div>
+            <div className="mt-1 text-sm text-muted-foreground"><T k="shop.freezeDesc">You already missed the day. Freeze it and keep the streak. 24-hour window only.</T></div>
+          </button>
+          <button
+            onClick={() => setKind("rest")}
+            className={`rounded-xl border-2 p-4 text-left ${kind === "rest" ? "border-primary bg-primary/10 shadow-comic" : "border-border bg-card"}`}
+          >
+            <div className="font-display text-2xl text-foreground">😴 <T k="shop.restName">REST DAY</T></div>
+            <div className="mt-1 text-sm text-muted-foreground"><T k="shop.restDesc">Planning ahead? Book a rest day. Way cheaper, and cheaper still the earlier you buy.</T></div>
+          </button>
+        </div>
+
+        <div className="mt-5 rounded-xl border-2 border-border bg-card p-4">
+          <div className="font-condensed text-xs font-black uppercase text-secondary"><T k="shop.pickDay">PICK THE DAY TO COVER</T></div>
+          <select
+            value={date}
+            onChange={(e) => { setDate(e.target.value); setErr(null); }}
+            className="mt-2 w-full rounded-lg border-2 border-border bg-background p-3 font-display text-lg text-foreground"
+          >
+            {options
+              .filter((o) => !(kind === "freeze" && o.daysAhead > 0 && o.date !== isoDate(new Date())) || kind === "rest")
+              .map((o) => (
+                <option key={o.date} value={o.date} disabled={owned.has(o.date)}>
+                  {o.label} — {shieldCost(kind, streak, o.daysAhead)} koins{owned.has(o.date) ? " (already covered)" : ""}
+                </option>
               ))}
-              {selected === "other" && (
-                <textarea
-                  value={otherText}
-                  onChange={(e) => setOtherText(e.target.value)}
-                  placeholder="Explain yourself to Kex…"
-                  maxLength={280}
-                  className="mt-1 w-full rounded-xl border-2 border-primary bg-background p-3 font-condensed text-sm text-foreground focus:outline-none"
-                  rows={3}
-                />
-              )}
+          </select>
+          <div className="mt-3 flex items-end justify-between gap-3">
+            <div>
+              <div className="font-condensed text-xs uppercase text-muted-foreground">Price</div>
+              <div className="font-display text-4xl text-primary">{cost} koins</div>
+              <div className="font-condensed text-[11px] uppercase text-muted-foreground">
+                Streak of {streak} · {chosen.daysAhead > 0 ? `${Math.min(chosen.daysAhead, 14) * 3}% early-bird discount${chosen.daysAhead > 14 ? " (max)" : ""}` : "no discount"}
+              </div>
             </div>
-            <div className="mt-4 flex gap-2">
-              <button onClick={onClose} className="rounded-xl border-2 border-border bg-card px-4 py-3 font-display text-lg text-foreground">CANCEL</button>
-              <button
-                onClick={submit}
-                disabled={!canSubmit || submitting}
-                className="flex-1 rounded-xl bg-primary py-3 font-display text-2xl text-primary-foreground shadow-comic-lg disabled:opacity-40"
-              >
-                {submitting ? "…" : "SUBMIT PLEA"}
-              </button>
-            </div>
-          </>
-        )}
+            <button
+              disabled={busy || !affordable || owned.has(date)}
+              onClick={async () => {
+                setBusy(true); setErr(null);
+                try { await onBuy(date, kind, cost); } catch (e) { setErr(e instanceof Error ? e.message : "Purchase failed."); }
+                finally { setBusy(false); }
+              }}
+              className="rounded-xl bg-primary px-6 py-4 font-display text-2xl text-primary-foreground shadow-comic-lg disabled:opacity-40"
+            >
+              {busy ? "…" : owned.has(date) ? "COVERED" : affordable ? "BUY" : "TOO POOR"}
+            </button>
+          </div>
+          {err && <div className="mt-2 font-condensed text-sm font-bold uppercase text-danger">{err}</div>}
+        </div>
+
+        <div className="mt-5 rounded-xl border-2 border-border bg-card">
+          <div className="border-b-2 border-border p-3 font-display text-2xl text-foreground"><T k="shop.owned">DAYS YOU'VE COVERED</T></div>
+          {shields.length === 0 ? (
+            <div className="p-4 text-center text-muted-foreground"><T k="shop.ownedEmpty">Nothing yet. Kex approves.</T></div>
+          ) : (
+            [...shields].sort((a, b) => a.shield_date.localeCompare(b.shield_date)).map((s) => (
+              <div key={s.shield_date} className="flex items-center justify-between border-b border-border p-3">
+                <div className="font-display text-lg text-foreground">{s.kind === "freeze" ? "🧊" : "😴"} {s.shield_date}</div>
+                <div className="font-condensed text-xs uppercase text-muted-foreground">{s.kind === "freeze" ? "Streak Freeze" : "Rest Day"} · {s.cost} koins</div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="mt-5 rounded-xl border-2 border-dashed border-secondary p-4 text-sm text-foreground/80">
+          <div className="font-condensed text-xs font-black uppercase text-secondary"><T k="shop.howEarnTitle">HOW TO EARN KOINS</T></div>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li><T k="shop.earn1">Finish a workout — harder levels pay way more.</T></li>
+            <li><T k="shop.earn2">Unlock trophies — the rarer the trophy, the bigger the payout.</T></li>
+            <li><T k="shop.earn3">Place high in tournaments — 1st place is a jackpot.</T></li>
+            <li><T k="shop.earn4">Hold a streak — every day you hold adds koins.</T></li>
+          </ul>
+        </div>
       </div>
     </div>
   );
 }
+
+/* =========================================================
+   PERSISTENT STREAK LEADERBOARD
+   ========================================================= */
+function StreakBoard({ myUserId, onBack }: { myUserId: string; onBack: () => void }) {
+  const rows = useStreakLeaderboard();
+  return (
+    <div className="min-h-screen px-5 py-6 pb-24">
+      <div className="mx-auto max-w-3xl">
+        <button onClick={onBack} className="font-condensed text-sm font-bold uppercase text-muted-foreground hover:text-primary">← Home</button>
+        <h1 className="mt-2 font-display text-5xl text-primary text-stroke-black">🔥 <T k="streaks.title">STREAK BOARD</T></h1>
+        <p className="mt-1 text-foreground/80">
+          <T k="streaks.blurb">This one never resets. Every user, ranked by their current streak. Sundays don't count against you, and shielded days count as covered.</T>
+        </p>
+
+        <div className="mt-5 rounded-xl border-2 border-border bg-card">
+          <div className="flex items-center justify-between border-b-2 border-border p-3">
+            <div className="font-display text-2xl text-foreground">ALL-TIME STREAK RANKINGS</div>
+            <div className="font-condensed text-[10px] uppercase text-muted-foreground">CURRENT · BEST</div>
+          </div>
+          {rows == null ? (
+            <div className="p-4 text-center text-muted-foreground">Loading…</div>
+          ) : rows.length === 0 ? (
+            <div className="p-4 text-center text-muted-foreground">Nobody here yet. Be the first!</div>
+          ) : (
+            rows.map((r, i) => (
+              <div key={r.user_id} className={`flex items-center justify-between border-b border-border p-3 ${r.user_id === myUserId ? "bg-primary/10" : ""}`}>
+                <div className="flex items-center gap-3">
+                  <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full font-display text-lg ${i === 0 ? "bg-primary text-primary-foreground" : i < 3 ? "bg-secondary text-secondary-foreground" : "bg-muted text-foreground"}`}>{i + 1}</span>
+                  <span className="font-display text-lg text-foreground">@{r.username}{r.user_id === myUserId ? " (you)" : ""}</span>
+                </div>
+                <div className="text-right">
+                  <div className="font-display text-xl text-primary">🔥 {r.streak}</div>
+                  <div className="font-condensed text-[10px] uppercase text-muted-foreground">best {r.best} · {r.days} active days</div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CategoryCard({ title, subtitle, emoji, img, selected, onSelect, badge }: {
   title: string; subtitle: string; emoji: string; img: string; selected: boolean; onSelect: () => void; badge?: string;
 }) {

@@ -337,10 +337,6 @@ function App() {
   );
 }
 
-    </div>
-  );
-}
-
 function findExerciseById(id: string): Exercise | undefined {
   const parts = id.split(".");
   return ALL_EXERCISES[parts[1]] ?? Object.values(ALL_EXERCISES).find((e) => e.id === id);

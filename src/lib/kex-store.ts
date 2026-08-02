@@ -109,9 +109,21 @@ export function exerciseMultiplier(id: string, map: ExerciseDifficultyMap): numb
   return table[v] ?? 1.0;
 }
 
-export function useStats(logs: WorkoutLogRow[]) {
+/** Longest streak ever held, computed by walking the streak calc back from every active day. */
+export function computeBestStreak(dateSet: Set<string>): number {
+  let best = 0;
+  for (const key of dateSet) {
+    const [y, m, d] = key.split("-").map(Number);
+    const s = computeStreak(dateSet, new Date(y, m - 1, d));
+    if (s > best) best = s;
+  }
+  return best;
+}
+
+export function useStats(logs: WorkoutLogRow[], shieldDates: string[] = []) {
+  const shieldKey = shieldDates.join(",");
   return useMemo(() => {
-    const totalWorkouts = logs.length;
+    const totalWorkouts = logs.filter((l) => l.category !== "mercy").length;
     const perDifficulty: Record<number, number> = {};
     let plankSec = 0;
     let pullupReps = 0;
@@ -124,9 +136,58 @@ export function useStats(logs: WorkoutLogRow[]) {
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       dateSet.add(key);
     }
+    // Purchased Streak Freezes / Rest Days count as "covered" days.
+    for (const s of shieldDates) dateSet.add(s);
     const streak = computeStreak(dateSet);
-    return { totalWorkouts, perDifficulty, plankSec, pullupReps, streak, dateSet };
-  }, [logs]);
+    const bestStreak = computeBestStreak(dateSet);
+    return { totalWorkouts, perDifficulty, plankSec, pullupReps, streak, bestStreak, dateSet };
+  }, [logs, shieldKey]);
+}
+
+/* ------- Persistent STREAK leaderboard (never resets) ------- */
+export type StreakLeaderRow = { user_id: string; username: string; streak: number; best: number; days: number };
+
+export async function fetchStreakLeaderboard(): Promise<StreakLeaderRow[]> {
+  const [{ data: profiles }, { data: logs }, { data: shields }] = await Promise.all([
+    supabase.from("profiles").select("id, username"),
+    supabase.from("workout_logs").select("user_id, completed_at").limit(100000),
+    supabase.from("streak_shields").select("user_id, shield_date").limit(100000),
+  ]);
+  const perUser = new Map<string, Set<string>>();
+  const add = (uid: string, key: string) => {
+    let s = perUser.get(uid);
+    if (!s) { s = new Set(); perUser.set(uid, s); }
+    s.add(key);
+  };
+  for (const l of (logs ?? []) as { user_id: string; completed_at: string }[]) {
+    const d = new Date(l.completed_at);
+    add(l.user_id, `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+  }
+  for (const s of (shields ?? []) as { user_id: string; shield_date: string }[]) add(s.user_id, s.shield_date);
+
+  const rows: StreakLeaderRow[] = [];
+  for (const p of (profiles ?? []) as { id: string; username: string }[]) {
+    const dates = perUser.get(p.id) ?? new Set<string>();
+    rows.push({
+      user_id: p.id,
+      username: p.username,
+      streak: computeStreak(dates),
+      best: computeBestStreak(dates),
+      days: dates.size,
+    });
+  }
+  return rows.sort((a, b) => b.streak - a.streak || b.best - a.best || b.days - a.days || a.username.localeCompare(b.username));
+}
+
+export function useStreakLeaderboard(refreshKey = 0) {
+  const [rows, setRows] = useState<StreakLeaderRow[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setRows(null);
+    fetchStreakLeaderboard().then((r) => { if (!cancelled) setRows(r); });
+    return () => { cancelled = true; };
+  }, [refreshKey]);
+  return rows;
 }
 
 /** Compute the workout metadata that gets logged when a session finishes. */

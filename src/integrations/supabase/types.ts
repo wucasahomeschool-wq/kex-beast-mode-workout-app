@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_copy: {
+        Row: {
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -29,6 +47,33 @@ export type Database = {
           created_at?: string
           id?: string
           username?: string
+        }
+        Relationships: []
+      }
+      streak_shields: {
+        Row: {
+          cost: number
+          created_at: string
+          id: string
+          kind: string
+          shield_date: string
+          user_id: string
+        }
+        Insert: {
+          cost?: number
+          created_at?: string
+          id?: string
+          kind: string
+          shield_date: string
+          user_id: string
+        }
+        Update: {
+          cost?: number
+          created_at?: string
+          id?: string
+          kind?: string
+          shield_date?: string
+          user_id?: string
         }
         Relationships: []
       }

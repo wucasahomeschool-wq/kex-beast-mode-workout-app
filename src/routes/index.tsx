@@ -261,21 +261,16 @@ function App() {
     }
   };
 
-  const pleadForMercy = async (reason: string) => {
+  const buyStreakShield = async (date: string, kind: ShieldKind, cost: number) => {
     if (!userId) return;
-    await supabase.from("workout_logs").insert({
-      user_id: userId,
-      category: "mercy",
-      difficulty: 0,
-      routine_name: "Pleaded for mercy",
-      is_custom: false,
-      exercises: [{ id: "mercy.excuse", amount: 1, unit: "reps", note: reason } as unknown as { id: string; amount: number; unit: string }],
-      plank_seconds: 0,
-      pullup_reps: 0,
-    });
-    try { localStorage.setItem(mercyKey(userId), monthKey()); } catch {}
+    if (cost > koins.balance) throw new Error("Not enough Kex Koins. Go earn some.");
+    await buyShield(userId, date, kind, cost);
     setRefreshKey((k) => k + 1);
+    notifyReward(kind === "freeze" ? "🧊 STREAK FREEZE ACTIVE" : "😴 REST DAY BOOKED", "Your streak is safe for that day.");
   };
+
+  const viewProfile = profile ?? (editing ? { id: "editor", username: "EDITOR" } : null);
+  const canView = !!(userId || editing);
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden">
@@ -287,22 +282,24 @@ function App() {
       {screen === "intro" && (
         <Intro onDone={() => { markOnboarded(); setScreen(hasToured() ? "home" : "tour"); }} />
       )}
-      {screen === "tour" && profile && (
+      {screen === "tour" && viewProfile && (
         <FeatureTour onDone={() => { markToured(); setScreen("home"); setJustSignedUp(false); }} />
       )}
-      {screen === "home" && profile && userId && (
+      {screen === "home" && viewProfile && canView && (
         <Home
-          profile={profile}
-          userId={userId}
+          profile={viewProfile}
           stats={stats}
+          koinBalance={koins.balance}
+          shieldCount={shields.length}
           onStart={startBuiltWorkout}
           onCustom={() => setScreen("custom")}
           onTournaments={() => setScreen("tournaments")}
           onTrophies={() => setScreen("trophies")}
           onPrefs={() => setScreen("prefs")}
           onMommy={() => setScreen("mommy")}
+          onShop={() => setScreen("shop")}
+          onStreaks={() => setScreen("streaks")}
           onSignOut={async () => { await supabase.auth.signOut(); setScreen("auth"); }}
-          onPlead={pleadForMercy}
         />
       )}
       {screen === "workout" && session && (
@@ -315,15 +312,31 @@ function App() {
       {screen === "custom" && (
         <CustomBuilder excluded={excluded} onStart={startCustomWorkout} onBack={() => setScreen("home")} />
       )}
-      {screen === "tournaments" && userId && <Tournaments myUserId={userId} onBack={() => setScreen("home")} />}
-      {screen === "trophies" && <Trophies stats={stats} myUserId={userId!} onBack={() => setScreen("home")} />}
+      {screen === "shop" && canView && (
+        <KoinShop
+          koins={koins}
+          streak={stats.streak}
+          shields={shields}
+          onBuy={buyStreakShield}
+          onBack={() => setScreen("home")}
+        />
+      )}
+      {screen === "streaks" && canView && (
+        <StreakBoard myUserId={userId ?? ""} onBack={() => setScreen("home")} />
+      )}
+      {screen === "tournaments" && canView && <Tournaments myUserId={userId ?? ""} onBack={() => setScreen("home")} />}
+      {screen === "trophies" && canView && <Trophies stats={stats} myUserId={userId ?? ""} onBack={() => setScreen("home")} />}
       {screen === "prefs" && <Preferences excluded={excluded} exerciseDifficulty={exerciseDifficulty} onSave={savePrefs} onSaveExerciseDifficulty={saveExerciseDifficulty} onBack={() => setScreen("home")} />}
-      {screen === "mommy" && userId && (
-        <MommyHome userId={userId} onBack={() => setScreen("home")} onStartDay={() => setScreen("mommy-workout")} onLogDay={logMommyDay} />
+      {screen === "mommy" && canView && (
+        <MommyHome userId={userId ?? "editor"} onBack={() => setScreen("home")} onStartDay={() => setScreen("mommy-workout")} onLogDay={logMommyDay} />
       )}
-      {screen === "mommy-workout" && userId && (
-        <MommyWorkout userId={userId} onExit={() => setScreen("mommy")} onDone={() => setScreen("mommy")} onLogDay={logMommyDay} />
+      {screen === "mommy-workout" && canView && (
+        <MommyWorkout userId={userId ?? "editor"} onExit={() => setScreen("mommy")} onDone={() => setScreen("mommy")} onLogDay={logMommyDay} />
       )}
+    </div>
+  );
+}
+
     </div>
   );
 }

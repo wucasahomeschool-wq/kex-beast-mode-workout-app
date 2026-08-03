@@ -17,16 +17,19 @@ export type Database = {
       app_copy: {
         Row: {
           key: string
+          style: Json
           updated_at: string
           value: string
         }
         Insert: {
           key: string
+          style?: Json
           updated_at?: string
-          value: string
+          value?: string
         }
         Update: {
           key?: string
+          style?: Json
           updated_at?: string
           value?: string
         }

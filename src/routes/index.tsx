@@ -39,6 +39,8 @@ import {
 } from "@/lib/kex-koins";
 import { CopyProvider, EditorBar, T, useCopyCtx } from "@/lib/kex-copy";
 import { kexEditorLogin } from "@/lib/kex-copy.functions";
+import { kexTuneWorkout } from "@/lib/kex-ai-coach.functions";
+
 
 export const Route = createFileRoute("/")({
   component: AppRoot,
@@ -100,7 +102,7 @@ function hasToured() { try { return localStorage.getItem(TOUR_KEY) === "1"; } ca
 function App() {
   const { ready, userId } = useSession();
   const profile = useProfile(userId);
-  const { editing } = useCopyCtx();
+  const { editing, stopEditor } = useCopyCtx();
   const [screen, setScreen] = useState<Screen>("auth");
   const [session, setSession] = useState<Session | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -115,6 +117,28 @@ function App() {
   const { excluded, exerciseDifficulty, save: savePrefs, saveExerciseDifficulty } = useMyPreferences(userId);
   const [justSignedUp, setJustSignedUp] = useState(false);
   const loggingRef = useRef(false);
+
+  // Editing is for the EDITOR only — signing into a real account leaves editor mode.
+  useEffect(() => {
+    if (userId && editing) stopEditor();
+  }, [userId, editing, stopEditor]);
+
+  // "+N 🪙" popup whenever the balance grows (workouts, trophies, tournaments, streak).
+  const [koinToast, setKoinToast] = useState<{ id: number; amount: number } | null>(null);
+  const prevBalance = useRef<number | null>(null);
+  useEffect(() => {
+    const prev = prevBalance.current;
+    prevBalance.current = koins.balance;
+    if (prev === null) return;
+    const delta = koins.balance - prev;
+    if (delta > 0) setKoinToast({ id: Date.now(), amount: delta });
+  }, [koins.balance]);
+  useEffect(() => {
+    if (!koinToast) return;
+    const t = setTimeout(() => setKoinToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [koinToast]);
+
 
   // PWA + notification setup once at boot.
   useEffect(() => {
@@ -185,7 +209,7 @@ function App() {
     return [...items, ...stretches];
   };
 
-  const startBuiltWorkout = (category: Category, difficulty: DifficultyId) => {
+  const startBuiltWorkout = async (category: Category, difficulty: DifficultyId) => {
     const w = WORKOUTS[category];
     const usable = w.routines.map((r) => ({
       r, ids: r.exerciseIds.filter((id) => !excluded.includes(id)),
@@ -193,12 +217,28 @@ function App() {
     const pick = usable.length ? usable[Math.floor(Math.random() * usable.length)] : {
       r: w.routines[0], ids: w.routines[0].exerciseIds,
     };
+    let items = buildItems(pick.ids, difficulty);
+    // Silent safety/effectiveness pass. Never blocks the workout.
+    try {
+      const { adjustments } = await kexTuneWorkout({
+        data: {
+          difficulty, category,
+          items: items.filter((i) => !i.id.startsWith("stretch."))
+            .map((i) => ({ id: i.id, name: i.meta.name, amount: i.amount, unit: i.unit })),
+        },
+      });
+      if (adjustments.length) {
+        const byId = new Map(adjustments.map((a) => [a.id, a.amount]));
+        items = items.map((i) => (byId.has(i.id) ? { ...i, amount: byId.get(i.id)! } : i));
+      }
+    } catch {}
     setSession({
       category, difficulty, routineName: pick.r.name, flavor: pick.r.flavor,
-      isCustom: false, items: buildItems(pick.ids, difficulty),
+      isCustom: false, items,
     });
     setScreen("workout");
   };
+
 
   const startCustomWorkout = (difficulty: DifficultyId, ids: string[]) => {
     setSession({
@@ -274,6 +314,8 @@ function App() {
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden">
+      {koinToast && <KoinToast amount={koinToast.amount} />}
+
       {screen === "auth" && (
         <Auth
           onDone={(mode) => { if (mode === "signup") setJustSignedUp(true); }}
@@ -336,6 +378,17 @@ function App() {
     </div>
   );
 }
+
+function KoinToast({ amount }: { amount: number }) {
+  return (
+    <div className="pointer-events-none fixed left-1/2 top-6 z-[95] -translate-x-1/2">
+      <div className="rotate-[-2deg] rounded-2xl border-4 border-primary bg-card px-6 py-3 font-display text-3xl text-primary shadow-comic-lg">
+        +{amount} 🪙 KEX KOINS
+      </div>
+    </div>
+  );
+}
+
 
 function findExerciseById(id: string): Exercise | undefined {
   const parts = id.split(".");

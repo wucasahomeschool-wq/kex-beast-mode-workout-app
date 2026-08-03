@@ -17,11 +17,12 @@ export const kexEditorLogin = createServerFn({ method: "POST" })
   });
 
 export const kexSaveCopy = createServerFn({ method: "POST" })
-  .inputValidator((d: { token: string; key: string; value: string }) =>
+  .inputValidator((d: { token: string; key: string; value: string; style?: Record<string, unknown> }) =>
     z.object({
       token: z.string(),
       key: z.string().trim().min(1).max(200),
       value: z.string().max(4000),
+      style: z.record(z.string(), z.unknown()).optional(),
     }).parse(d),
   )
   .handler(async ({ data }) => {
@@ -29,10 +30,16 @@ export const kexSaveCopy = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin
       .from("app_copy")
-      .upsert({ key: data.key, value: data.value, updated_at: new Date().toISOString() });
+      .upsert({
+        key: data.key,
+        value: data.value,
+        style: (data.style ?? {}) as never,
+        updated_at: new Date().toISOString(),
+      });
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
 
 export const kexResetCopy = createServerFn({ method: "POST" })
   .inputValidator((d: { token: string; key: string }) =>

@@ -118,6 +118,28 @@ function App() {
   const [justSignedUp, setJustSignedUp] = useState(false);
   const loggingRef = useRef(false);
 
+  // Editing is for the EDITOR only — signing into a real account leaves editor mode.
+  useEffect(() => {
+    if (userId && editing) stopEditor();
+  }, [userId, editing, stopEditor]);
+
+  // "+N 🪙" popup whenever the balance grows (workouts, trophies, tournaments, streak).
+  const [koinToast, setKoinToast] = useState<{ id: number; amount: number } | null>(null);
+  const prevBalance = useRef<number | null>(null);
+  useEffect(() => {
+    const prev = prevBalance.current;
+    prevBalance.current = koins.balance;
+    if (prev === null) return;
+    const delta = koins.balance - prev;
+    if (delta > 0) setKoinToast({ id: Date.now(), amount: delta });
+  }, [koins.balance]);
+  useEffect(() => {
+    if (!koinToast) return;
+    const t = setTimeout(() => setKoinToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [koinToast]);
+
+
   // PWA + notification setup once at boot.
   useEffect(() => {
     if (typeof window === "undefined") return;

@@ -102,7 +102,7 @@ function hasToured() { try { return localStorage.getItem(TOUR_KEY) === "1"; } ca
 function App() {
   const { ready, userId } = useSession();
   const profile = useProfile(userId);
-  const { editing } = useCopyCtx();
+  const { editing, stopEditor } = useCopyCtx();
   const [screen, setScreen] = useState<Screen>("auth");
   const [session, setSession] = useState<Session | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);

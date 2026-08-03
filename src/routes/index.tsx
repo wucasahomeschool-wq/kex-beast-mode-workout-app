@@ -379,6 +379,17 @@ function App() {
   );
 }
 
+function KoinToast({ amount }: { amount: number }) {
+  return (
+    <div className="pointer-events-none fixed left-1/2 top-6 z-[95] -translate-x-1/2">
+      <div className="rotate-[-2deg] rounded-2xl border-4 border-primary bg-card px-6 py-3 font-display text-3xl text-primary shadow-comic-lg">
+        +{amount} 🪙 KEX KOINS
+      </div>
+    </div>
+  );
+}
+
+
 function findExerciseById(id: string): Exercise | undefined {
   const parts = id.split(".");
   return ALL_EXERCISES[parts[1]] ?? Object.values(ALL_EXERCISES).find((e) => e.id === id);

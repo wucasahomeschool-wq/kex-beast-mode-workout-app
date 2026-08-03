@@ -39,6 +39,8 @@ import {
 } from "@/lib/kex-koins";
 import { CopyProvider, EditorBar, T, useCopyCtx } from "@/lib/kex-copy";
 import { kexEditorLogin } from "@/lib/kex-copy.functions";
+import { kexTuneWorkout } from "@/lib/kex-ai-coach.functions";
+
 
 export const Route = createFileRoute("/")({
   component: AppRoot,

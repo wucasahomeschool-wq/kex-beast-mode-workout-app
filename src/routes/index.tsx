@@ -314,6 +314,8 @@ function App() {
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden">
+      {koinToast && <KoinToast amount={koinToast.amount} />}
+
       {screen === "auth" && (
         <Auth
           onDone={(mode) => { if (mode === "signup") setJustSignedUp(true); }}

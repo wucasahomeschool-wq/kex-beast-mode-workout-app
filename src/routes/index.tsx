@@ -209,7 +209,7 @@ function App() {
     return [...items, ...stretches];
   };
 
-  const startBuiltWorkout = (category: Category, difficulty: DifficultyId) => {
+  const startBuiltWorkout = async (category: Category, difficulty: DifficultyId) => {
     const w = WORKOUTS[category];
     const usable = w.routines.map((r) => ({
       r, ids: r.exerciseIds.filter((id) => !excluded.includes(id)),
@@ -217,12 +217,28 @@ function App() {
     const pick = usable.length ? usable[Math.floor(Math.random() * usable.length)] : {
       r: w.routines[0], ids: w.routines[0].exerciseIds,
     };
+    let items = buildItems(pick.ids, difficulty);
+    // Silent safety/effectiveness pass. Never blocks the workout.
+    try {
+      const { adjustments } = await kexTuneWorkout({
+        data: {
+          difficulty, category,
+          items: items.filter((i) => !i.id.startsWith("stretch."))
+            .map((i) => ({ id: i.id, name: i.meta.name, amount: i.amount, unit: i.unit })),
+        },
+      });
+      if (adjustments.length) {
+        const byId = new Map(adjustments.map((a) => [a.id, a.amount]));
+        items = items.map((i) => (byId.has(i.id) ? { ...i, amount: byId.get(i.id)! } : i));
+      }
+    } catch {}
     setSession({
       category, difficulty, routineName: pick.r.name, flavor: pick.r.flavor,
-      isCustom: false, items: buildItems(pick.ids, difficulty),
+      isCustom: false, items,
     });
     setScreen("workout");
   };
+
 
   const startCustomWorkout = (difficulty: DifficultyId, ids: string[]) => {
     setSession({

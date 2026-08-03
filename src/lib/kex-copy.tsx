@@ -1,14 +1,27 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode,
+} from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { kexSaveCopy, kexResetCopy } from "./kex-copy.functions";
 
 const EDITOR_TOKEN_KEY = "kex-editor-token";
 
+export type KexStyle = {
+  color?: string;
+  bg?: string;
+  border?: string;
+  weight?: string;
+  italic?: boolean;
+  underline?: boolean;
+  size?: string;
+};
+
 type CopyCtx = {
   map: Record<string, string>;
+  styles: Record<string, KexStyle>;
   editing: boolean;
   token: string | null;
-  save: (key: string, value: string) => Promise<void>;
+  save: (key: string, value: string, style?: KexStyle) => Promise<void>;
   reset: (key: string) => Promise<void>;
   startEditor: (token: string) => void;
   stopEditor: () => void;
@@ -20,30 +33,134 @@ export function getStoredEditorToken(): string | null {
   try { return localStorage.getItem(EDITOR_TOKEN_KEY); } catch { return null; }
 }
 
+function hash(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+/* =========================================================
+   Universal DOM text/style overrides
+   Every rendered text node in the app becomes an editable,
+   Supabase-backed string. Keys are derived from the original
+   text so the same phrase edits everywhere at once.
+   ========================================================= */
+const originals = new WeakMap<Text, string>();
+
+function isEditableText(node: Text): boolean {
+  const t = node.nodeValue ?? "";
+  if (!/[A-Za-z]/.test(t)) return false;
+  const el = node.parentElement;
+  if (!el) return false;
+  if (el.closest("[data-kex-editor]")) return false;
+  const tag = el.tagName;
+  if (tag === "SCRIPT" || tag === "STYLE" || tag === "TEXTAREA" || tag === "OPTION") return false;
+  return true;
+}
+
+export function keyForNode(node: Text): string {
+  const explicit = node.parentElement?.closest("[data-kex-key]")?.getAttribute("data-kex-key");
+  if (explicit) return explicit;
+  if (!originals.has(node)) originals.set(node, node.nodeValue ?? "");
+  return "auto:" + hash((originals.get(node) ?? "").trim());
+}
+
+export function originalOf(node: Text): string {
+  return originals.get(node) ?? node.nodeValue ?? "";
+}
+
+function applyStyle(el: HTMLElement, s: KexStyle | undefined) {
+  el.style.color = s?.color ?? "";
+  el.style.backgroundColor = s?.bg ?? "";
+  el.style.borderColor = s?.border ?? "";
+  el.style.fontWeight = s?.weight ?? "";
+  el.style.fontStyle = s?.italic ? "italic" : "";
+  el.style.textDecoration = s?.underline ? "underline" : "";
+  el.style.fontSize = s?.size ?? "";
+}
+
+function walkTextNodes(cb: (node: Text) => void) {
+  if (typeof document === "undefined") return;
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const list: Text[] = [];
+  while (walker.nextNode()) list.push(walker.currentNode as Text);
+  for (const n of list) if (isEditableText(n)) cb(n);
+}
+
 export function CopyProvider({ children }: { children: ReactNode }) {
   const [map, setMap] = useState<Record<string, string>>({});
+  const [styles, setStyles] = useState<Record<string, KexStyle>>({});
   const [token, setToken] = useState<string | null>(null);
+  const applying = useRef(false);
 
   useEffect(() => {
     setToken(getStoredEditorToken());
-    supabase.from("app_copy").select("key, value").then(({ data }) => {
+    supabase.from("app_copy").select("key, value, style").then(({ data }) => {
       if (!data) return;
-      const next: Record<string, string> = {};
-      for (const row of data as { key: string; value: string }[]) next[row.key] = row.value;
-      setMap(next);
+      const nextText: Record<string, string> = {};
+      const nextStyle: Record<string, KexStyle> = {};
+      for (const row of data as { key: string; value: string; style: KexStyle | null }[]) {
+        if (row.value) nextText[row.key] = row.value;
+        if (row.style && Object.keys(row.style).length) nextStyle[row.key] = row.style;
+      }
+      setMap(nextText);
+      setStyles(nextStyle);
     });
   }, []);
 
-  const save = useCallback(async (key: string, value: string) => {
+  // Re-apply DB overrides onto the live DOM whenever data or the DOM changes.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const hasOverrides = Object.keys(map).length > 0 || Object.keys(styles).length > 0;
+
+    const run = () => {
+      if (applying.current) return;
+      applying.current = true;
+      try {
+        walkTextNodes((node) => {
+          const key = keyForNode(node);
+          const override = map[key];
+          const orig = originalOf(node);
+          const cur = node.nodeValue ?? "";
+          // React re-rendered this node with genuinely new content: re-baseline.
+          if (cur !== orig && cur !== override) originals.set(node, cur);
+          if (override !== undefined && cur !== override) node.nodeValue = override;
+          const st = styles[key];
+          const el = node.parentElement;
+          if (el && (st || el.style.length)) applyStyle(el, st);
+        });
+      } finally {
+        applying.current = false;
+      }
+    };
+
+    if (!hasOverrides) return;
+    run();
+    const obs = new MutationObserver(() => {
+      if (applying.current) return;
+      requestAnimationFrame(run);
+    });
+    obs.observe(document.body, { childList: true, subtree: true, characterData: true });
+    return () => obs.disconnect();
+  }, [map, styles]);
+
+  const save = useCallback(async (key: string, value: string, style?: KexStyle) => {
     if (!token) return;
-    await kexSaveCopy({ data: { token, key, value } });
+    await kexSaveCopy({ data: { token, key, value, style: style ?? {} } });
     setMap((m) => ({ ...m, [key]: value }));
+    setStyles((s) => {
+      const n = { ...s };
+      if (style && Object.keys(style).length) n[key] = style; else delete n[key];
+      return n;
+    });
   }, [token]);
 
   const reset = useCallback(async (key: string) => {
     if (!token) return;
     await kexResetCopy({ data: { token, key } });
     setMap((m) => { const n = { ...m }; delete n[key]; return n; });
+    setStyles((s) => { const n = { ...s }; delete n[key]; return n; });
+    if (typeof window !== "undefined") window.location.reload();
   }, [token]);
 
   const startEditor = useCallback((t: string) => {
@@ -56,10 +173,15 @@ export function CopyProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<CopyCtx>(() => ({
-    map, editing: !!token, token, save, reset, startEditor, stopEditor,
-  }), [map, token, save, reset, startEditor, stopEditor]);
+    map, styles, editing: !!token, token, save, reset, startEditor, stopEditor,
+  }), [map, styles, token, save, reset, startEditor, stopEditor]);
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={value}>
+      {children}
+      <UniversalEditor />
+    </Ctx.Provider>
+  );
 }
 
 export function useCopyCtx() {
@@ -74,56 +196,176 @@ export function useCopy(key: string, fallback: string) {
   return map[key] ?? fallback;
 }
 
-/**
- * Editable text. Renders the DB override if one exists, otherwise the default
- * written in code. When the EDITOR is signed in, tap it to rewrite it for everyone.
- */
+/** Explicitly-keyed editable text. Optional — every text node is editable anyway. */
 export function T({ k, children, className }: { k: string; children: string; className?: string }) {
-  const { map, editing, save, reset } = useCopyCtx();
-  const text = map[k] ?? children;
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(text);
-  const [busy, setBusy] = useState(false);
+  const { map } = useCopyCtx();
+  return <span data-kex-key={k} className={className}>{map[k] ?? children}</span>;
+}
 
-  if (!editing) return <span className={className}>{text}</span>;
+/* =========================================================
+   EDITOR OVERLAY — tap anything, edit text / style / colors
+   ========================================================= */
+const SWATCHES: { label: string; value: string }[] = [
+  { label: "Default", value: "" },
+  { label: "Yellow", value: "var(--primary)" },
+  { label: "Magenta", value: "var(--secondary)" },
+  { label: "Cyan", value: "var(--accent)" },
+  { label: "White", value: "var(--foreground)" },
+  { label: "Grey", value: "var(--muted-foreground)" },
+  { label: "Red", value: "var(--danger)" },
+  { label: "Card", value: "var(--card)" },
+  { label: "Dark", value: "var(--background)" },
+];
+
+type Target = { key: string; node: Text; el: HTMLElement; original: string };
+
+function UniversalEditor() {
+  const { editing, map, styles, save, reset } = useCopyCtx();
+  const [target, setTarget] = useState<Target | null>(null);
+  const [pending, setPending] = useState<{ el: HTMLElement; ev: MouseEvent } | null>(null);
+  const [draft, setDraft] = useState("");
+  const [style, setStyle] = useState<KexStyle>({});
+  const [busy, setBusy] = useState(false);
+  const bypass = useRef(false);
+
+  useEffect(() => {
+    if (!editing || typeof document === "undefined") return;
+    const onClick = (ev: MouseEvent) => {
+      if (bypass.current) return;
+      const el = ev.target as HTMLElement | null;
+      if (!el || el.closest("[data-kex-editor]")) return;
+      if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT") return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const pressable = el.closest("button,a,[role='button']") as HTMLElement | null;
+      if (pressable) { setPending({ el: pressable, ev }); return; }
+      openFor(el);
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [editing, map, styles]);
+
+  const openFor = (el: HTMLElement) => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let node: Text | null = null;
+    while (walker.nextNode()) {
+      const n = walker.currentNode as Text;
+      if (/[A-Za-z]/.test(n.nodeValue ?? "")) { node = n; break; }
+    }
+    if (!node) return;
+    const key = keyForNode(node);
+    const original = originalOf(node);
+    setTarget({ key, node, el: node.parentElement ?? el, original });
+    setDraft(map[key] ?? node.nodeValue ?? original);
+    setStyle(styles[key] ?? {});
+    setPending(null);
+  };
+
+  const interact = () => {
+    const el = pending?.el;
+    setPending(null);
+    if (!el) return;
+    bypass.current = true;
+    el.click();
+    setTimeout(() => { bypass.current = false; }, 0);
+  };
+
+  if (!editing) return null;
 
   return (
-    <>
-      <span
-        className={`${className ?? ""} cursor-pointer rounded outline-dashed outline-2 outline-offset-2 outline-secondary/70 hover:bg-secondary/20`}
-        title={`Edit text: ${k}`}
-        onClick={(e) => { e.stopPropagation(); e.preventDefault(); setDraft(text); setOpen(true); }}
-      >
-        {text}
-      </span>
-      {open && (
-        <span className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-5" onClick={(e) => { e.stopPropagation(); setOpen(false); }}>
-          <span className="block w-full max-w-lg rounded-2xl border-4 border-secondary bg-card p-5 shadow-comic-lg" onClick={(e) => e.stopPropagation()}>
-            <span className="block font-condensed text-xs font-black uppercase tracking-widest text-secondary">Editing “{k}”</span>
+    <div data-kex-editor="1">
+      {pending && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-5" onClick={() => setPending(null)}>
+          <div className="w-full max-w-xs rounded-2xl border-4 border-secondary bg-card p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="font-condensed text-xs font-black uppercase tracking-widest text-secondary">Pressable</div>
+            <button onClick={interact} className="mt-3 w-full rounded-xl bg-primary py-3 font-display text-2xl text-primary-foreground">▶ INTERACT</button>
+            <button onClick={() => openFor(pending.el)} className="mt-2 w-full rounded-xl bg-secondary py-3 font-display text-2xl text-secondary-foreground">✏️ EDIT</button>
+            <button onClick={() => setPending(null)} className="mt-2 w-full font-condensed text-xs font-black uppercase text-muted-foreground">CANCEL</button>
+          </div>
+        </div>
+      )}
+
+      {target && (
+        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/70 p-3" onClick={() => setTarget(null)}>
+          <div
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border-4 border-secondary bg-card p-4 shadow-comic-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="font-condensed text-xs font-black uppercase tracking-widest text-secondary">
+              Editing text · {target.key}
+            </div>
             <textarea
               autoFocus
+              rows={3}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              rows={5}
               className="mt-2 w-full rounded-lg border-2 border-border bg-background p-3 text-foreground"
             />
-            <span className="mt-3 flex flex-wrap gap-2">
+
+            <Swatches label="Text color" value={style.color ?? ""} onPick={(v) => setStyle((s) => ({ ...s, color: v || undefined }))} />
+            <Swatches label="Box background" value={style.bg ?? ""} onPick={(v) => setStyle((s) => ({ ...s, bg: v || undefined }))} />
+            <Swatches label="Border color" value={style.border ?? ""} onPick={(v) => setStyle((s) => ({ ...s, border: v || undefined }))} />
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Toggle on={style.weight === "900"} label="BOLD" onClick={() => setStyle((s) => ({ ...s, weight: s.weight ? undefined : "900" }))} />
+              <Toggle on={!!style.italic} label="ITALIC" onClick={() => setStyle((s) => ({ ...s, italic: !s.italic }))} />
+              <Toggle on={!!style.underline} label="UNDERLINE" onClick={() => setStyle((s) => ({ ...s, underline: !s.underline }))} />
+              <Toggle on={style.size === "0.85em"} label="SMALLER" onClick={() => setStyle((s) => ({ ...s, size: s.size === "0.85em" ? undefined : "0.85em" }))} />
+              <Toggle on={style.size === "1.25em"} label="BIGGER" onClick={() => setStyle((s) => ({ ...s, size: s.size === "1.25em" ? undefined : "1.25em" }))} />
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
               <button
                 disabled={busy}
-                onClick={async () => { setBusy(true); try { await save(k, draft); setOpen(false); } finally { setBusy(false); } }}
+                onClick={async () => {
+                  setBusy(true);
+                  try { await save(target.key, draft, style); setTarget(null); } finally { setBusy(false); }
+                }}
                 className="rounded-lg bg-primary px-4 py-2 font-display text-xl text-primary-foreground shadow-comic disabled:opacity-50"
               >SAVE</button>
               <button
                 disabled={busy}
-                onClick={async () => { setBusy(true); try { await reset(k); setOpen(false); } finally { setBusy(false); } }}
+                onClick={async () => { setBusy(true); try { await reset(target.key); setTarget(null); } finally { setBusy(false); } }}
                 className="rounded-lg border-2 border-border bg-card px-4 py-2 font-condensed text-sm font-black uppercase text-foreground"
               >RESET TO ORIGINAL</button>
-              <button onClick={() => setOpen(false)} className="rounded-lg border-2 border-border px-4 py-2 font-condensed text-sm font-black uppercase text-muted-foreground">CANCEL</button>
-            </span>
-          </span>
-        </span>
+              <button onClick={() => setTarget(null)} className="rounded-lg border-2 border-border px-4 py-2 font-condensed text-sm font-black uppercase text-muted-foreground">CANCEL</button>
+            </div>
+          </div>
+        </div>
       )}
-    </>
+    </div>
+  );
+}
+
+function Swatches({ label, value, onPick }: { label: string; value: string; onPick: (v: string) => void }) {
+  return (
+    <div className="mt-3">
+      <div className="font-condensed text-[10px] font-black uppercase tracking-widest text-muted-foreground">{label}</div>
+      <div className="mt-1 flex flex-wrap gap-2">
+        {SWATCHES.map((s) => (
+          <button
+            key={s.label}
+            onClick={() => onPick(s.value)}
+            title={s.label}
+            className={`h-8 w-8 rounded-full border-2 ${value === s.value ? "border-primary" : "border-border"}`}
+            style={{ background: s.value || "transparent" }}
+          >
+            {!s.value && <span className="font-condensed text-[9px] font-black text-muted-foreground">×</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Toggle({ on, label, onClick }: { on: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-lg border-2 px-3 py-1 font-condensed text-xs font-black uppercase ${on ? "border-primary bg-primary/20 text-primary" : "border-border text-muted-foreground"}`}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -132,8 +374,8 @@ export function EditorBar() {
   const { editing, stopEditor } = useCopyCtx();
   if (!editing) return null;
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-[90] flex items-center justify-between gap-3 border-t-4 border-secondary bg-secondary/95 px-4 py-2 text-secondary-foreground">
-      <div className="font-condensed text-xs font-black uppercase tracking-widest">✏️ EDITOR MODE — tap any dashed text to rewrite it</div>
+    <div data-kex-editor="1" className="fixed bottom-0 left-0 right-0 z-[90] flex items-center justify-between gap-3 border-t-4 border-secondary bg-secondary/95 px-4 py-2 text-secondary-foreground">
+      <div className="font-condensed text-xs font-black uppercase tracking-widest">✏️ EDITOR MODE — tap ANY text to rewrite or restyle it</div>
       <button onClick={stopEditor} className="rounded-lg border-2 border-secondary-foreground px-3 py-1 font-condensed text-xs font-black uppercase">EXIT EDITOR</button>
     </div>
   );

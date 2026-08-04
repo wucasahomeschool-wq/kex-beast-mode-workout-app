@@ -787,12 +787,13 @@ function Home({
         </h2>
 
         <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-          <CategoryCard title="CORE" subtitle="The main event" emoji="🔥" img={CATEGORY_IMG.core} selected={category === "core"} onSelect={() => setCategory("core")} badge="★ MAIN" />
-          <CategoryCard title="UPPER" subtitle="Side quest" emoji="💪" img={CATEGORY_IMG.upper} selected={category === "upper"} onSelect={() => setCategory("upper")} />
-          <CategoryCard title="LEGS" subtitle="Do not skip" emoji="🦵" img={CATEGORY_IMG.legs} selected={category === "legs"} onSelect={() => setCategory("legs")} />
-          <CategoryCard title="CARDIO" subtitle="Treadmill terror" emoji="🏃" img={CATEGORY_IMG.cardio} selected={category === "cardio"} onSelect={() => setCategory("cardio")} />
-          <CategoryCard title="SOCCER" subtitle="Garage drills" emoji="⚽" img={CATEGORY_IMG.soccer} selected={category === "soccer"} onSelect={() => setCategory("soccer")} />
+          <CategoryCard title="CORE" subtitle="The main event" emoji="🔥" img={CATEGORY_IMG.core} selected={category === "core"} onSelect={() => setCategory("core")} badge="★ MAIN" index={0} />
+          <CategoryCard title="UPPER" subtitle="Side quest" emoji="💪" img={CATEGORY_IMG.upper} selected={category === "upper"} onSelect={() => setCategory("upper")} index={1} />
+          <CategoryCard title="LEGS" subtitle="Do not skip" emoji="🦵" img={CATEGORY_IMG.legs} selected={category === "legs"} onSelect={() => setCategory("legs")} index={2} />
+          <CategoryCard title="CARDIO" subtitle="Treadmill terror" emoji="🏃" img={CATEGORY_IMG.cardio} selected={category === "cardio"} onSelect={() => setCategory("cardio")} index={3} />
+          <CategoryCard title="SOCCER" subtitle="Garage drills" emoji="⚽" img={CATEGORY_IMG.soccer} selected={category === "soccer"} onSelect={() => setCategory("soccer")} index={4} />
         </div>
+
 
         <h3 className="mt-10 font-display text-4xl text-foreground">
           How much <span className="text-primary">Kex</span> can you handle?

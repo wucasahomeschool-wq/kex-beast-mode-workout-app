@@ -40,6 +40,10 @@ import {
 import { CopyProvider, EditorBar, T, useCopyCtx } from "@/lib/kex-copy";
 import { kexEditorLogin } from "@/lib/kex-copy.functions";
 import { kexTuneWorkout } from "@/lib/kex-ai-coach.functions";
+import {
+  CoinFlight, Confetti, CountUp, ImpactBurst, LoadingRing, TimerRing,
+} from "@/components/kex-fx";
+import { stagger, useFlash } from "@/lib/kex-motion";
 
 
 export const Route = createFileRoute("/")({
@@ -105,6 +109,7 @@ function App() {
   const { editing, stopEditor } = useCopyCtx();
   const [screen, setScreen] = useState<Screen>("auth");
   const [session, setSession] = useState<Session | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const logs = useMyLogs(userId, refreshKey);
   const shields = useMyShields(userId, refreshKey);
@@ -218,26 +223,49 @@ function App() {
       r: w.routines[0], ids: w.routines[0].exerciseIds,
     };
     let items = buildItems(pick.ids, difficulty);
-    // Silent safety/effectiveness pass. Never blocks the workout.
+    // Silent safety/effectiveness pass. Never blocks the workout for long.
+    setPreparing(true);
     try {
-      const { adjustments } = await kexTuneWorkout({
-        data: {
-          difficulty, category,
-          items: items.filter((i) => !i.id.startsWith("stretch."))
-            .map((i) => ({ id: i.id, name: i.meta.name, amount: i.amount, unit: i.unit })),
-        },
-      });
+      const pool = Array.from(new Set(w.routines.flatMap((r) => r.exerciseIds)))
+        .filter((id) => !excluded.includes(id) && !pick.ids.includes(id))
+        .map((id) => findExerciseById(id))
+        .filter((e): e is Exercise => !!e)
+        .map((e) => ({ id: e.id, name: e.name, unit: e.unit, base: e.base }));
+      const nothing = { adjustments: [] as { id: string; amount: number }[], swaps: [] as { from: string; to: string; amount: number }[] };
+      const { adjustments, swaps } = await Promise.race([
+        kexTuneWorkout({
+          data: {
+            difficulty, category, pool,
+            items: items.filter((i) => !i.id.startsWith("stretch."))
+              .map((i) => ({ id: i.id, name: i.meta.name, amount: i.amount, unit: i.unit })),
+          },
+        }),
+        new Promise<typeof nothing>((resolve) => setTimeout(() => resolve(nothing), 12000)),
+      ]);
+      if (swaps.length) {
+        const byFrom = new Map(swaps.map((s) => [s.from, s]));
+        items = items.map((i) => {
+          const s = byFrom.get(i.id);
+          if (!s) return i;
+          const meta = findExerciseById(s.to);
+          if (!meta) return i;
+          return { id: meta.id, meta, unit: meta.unit, amount: s.amount };
+        });
+      }
       if (adjustments.length) {
         const byId = new Map(adjustments.map((a) => [a.id, a.amount]));
         items = items.map((i) => (byId.has(i.id) ? { ...i, amount: byId.get(i.id)! } : i));
       }
-    } catch {}
+    } catch {} finally {
+      setPreparing(false);
+    }
     setSession({
       category, difficulty, routineName: pick.r.name, flavor: pick.r.flavor,
       isCustom: false, items,
     });
     setScreen("workout");
   };
+
 
 
   const startCustomWorkout = (difficulty: DifficultyId, ids: string[]) => {
@@ -315,6 +343,9 @@ function App() {
   return (
     <div className="min-h-screen w-full overflow-x-hidden">
       {koinToast && <KoinToast amount={koinToast.amount} />}
+      {preparing && <LoadingRing label="PREPARING KEX WORKOUT" />}
+      <div key={screen} className="animate-pop-in">
+
 
       {screen === "auth" && (
         <Auth
@@ -375,17 +406,21 @@ function App() {
       {screen === "mommy-workout" && canView && (
         <MommyWorkout userId={userId ?? "editor"} onExit={() => setScreen("mommy")} onDone={() => setScreen("mommy")} onLogDay={logMommyDay} />
       )}
+      </div>
     </div>
   );
 }
 
 function KoinToast({ amount }: { amount: number }) {
   return (
-    <div className="pointer-events-none fixed left-1/2 top-6 z-[95] -translate-x-1/2">
-      <div className="rotate-[-2deg] rounded-2xl border-4 border-primary bg-card px-6 py-3 font-display text-3xl text-primary shadow-comic-lg">
-        +{amount} 🪙 KEX KOINS
+    <>
+      <CoinFlight count={Math.min(14, Math.max(5, Math.round(amount / 8)))} />
+      <div className="animate-toast-drop pointer-events-none fixed left-1/2 top-6 z-[95]">
+        <div className="glow-sweep rounded-2xl border-4 border-primary bg-card px-6 py-3 font-display text-3xl text-primary shadow-comic-lg">
+          +<CountUp to={amount} /> 🪙 KEX KOINS
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -715,6 +750,7 @@ function Home({
 }) {
   const [category, setCategory] = useState<Category>("core");
   const [difficulty, setDifficulty] = useState<DifficultyId>(3);
+  const [smashing, smash] = useFlash(600);
   return (
     <div className="relative min-h-screen px-5 py-6">
       <div className="mx-auto max-w-5xl">
@@ -730,14 +766,19 @@ function Home({
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-          <NavBtn label="TOURNAMENTS" emoji="🏆" onClick={onTournaments} />
-          <NavBtn label="STREAK BOARD" emoji="🔥" onClick={onStreaks} />
-          <NavBtn label="TROPHIES" emoji="🏅" onClick={onTrophies} />
-          <NavBtn label="KOIN SHOP" emoji="🪙" onClick={onShop} />
-          <NavBtn label="CUSTOM" emoji="🛠️" onClick={onCustom} />
-          <NavBtn label="PREFERENCES" emoji="⚙️" onClick={onPrefs} />
-          <NavBtn label="MOMMY ❤️" emoji="💗" onClick={onMommy} />
+          {[
+            { label: "TOURNAMENTS", emoji: "🏆", onClick: onTournaments },
+            { label: "STREAK BOARD", emoji: "🔥", onClick: onStreaks },
+            { label: "TROPHIES", emoji: "🏅", onClick: onTrophies },
+            { label: "KOIN SHOP", emoji: "🪙", onClick: onShop },
+            { label: "CUSTOM", emoji: "🛠️", onClick: onCustom },
+            { label: "PREFERENCES", emoji: "⚙️", onClick: onPrefs },
+            { label: "MOMMY ❤️", emoji: "💗", onClick: onMommy },
+          ].map((b, i) => (
+            <NavBtn key={b.label} label={b.label} emoji={b.emoji} onClick={b.onClick} index={i} />
+          ))}
         </div>
+
 
         <StatsStrip stats={stats} />
 
@@ -746,12 +787,13 @@ function Home({
         </h2>
 
         <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-          <CategoryCard title="CORE" subtitle="The main event" emoji="🔥" img={CATEGORY_IMG.core} selected={category === "core"} onSelect={() => setCategory("core")} badge="★ MAIN" />
-          <CategoryCard title="UPPER" subtitle="Side quest" emoji="💪" img={CATEGORY_IMG.upper} selected={category === "upper"} onSelect={() => setCategory("upper")} />
-          <CategoryCard title="LEGS" subtitle="Do not skip" emoji="🦵" img={CATEGORY_IMG.legs} selected={category === "legs"} onSelect={() => setCategory("legs")} />
-          <CategoryCard title="CARDIO" subtitle="Treadmill terror" emoji="🏃" img={CATEGORY_IMG.cardio} selected={category === "cardio"} onSelect={() => setCategory("cardio")} />
-          <CategoryCard title="SOCCER" subtitle="Garage drills" emoji="⚽" img={CATEGORY_IMG.soccer} selected={category === "soccer"} onSelect={() => setCategory("soccer")} />
+          <CategoryCard title="CORE" subtitle="The main event" emoji="🔥" img={CATEGORY_IMG.core} selected={category === "core"} onSelect={() => setCategory("core")} badge="★ MAIN" index={0} />
+          <CategoryCard title="UPPER" subtitle="Side quest" emoji="💪" img={CATEGORY_IMG.upper} selected={category === "upper"} onSelect={() => setCategory("upper")} index={1} />
+          <CategoryCard title="LEGS" subtitle="Do not skip" emoji="🦵" img={CATEGORY_IMG.legs} selected={category === "legs"} onSelect={() => setCategory("legs")} index={2} />
+          <CategoryCard title="CARDIO" subtitle="Treadmill terror" emoji="🏃" img={CATEGORY_IMG.cardio} selected={category === "cardio"} onSelect={() => setCategory("cardio")} index={3} />
+          <CategoryCard title="SOCCER" subtitle="Garage drills" emoji="⚽" img={CATEGORY_IMG.soccer} selected={category === "soccer"} onSelect={() => setCategory("soccer")} index={4} />
         </div>
+
 
         <h3 className="mt-10 font-display text-4xl text-foreground">
           How much <span className="text-primary">Kex</span> can you handle?
@@ -775,11 +817,16 @@ function Home({
           ))}
         </div>
 
-        <div className="mt-8 flex justify-center pb-16">
-          <button onClick={() => onStart(category, difficulty)} className="rotate-[-1deg] rounded-2xl bg-primary px-10 py-5 font-display text-4xl text-primary-foreground shadow-comic-lg transition-transform hover:rotate-0 hover:scale-105 active:translate-x-1 active:translate-y-1">
+        <div className="relative mt-8 flex justify-center pb-16">
+          {smashing && <ImpactBurst />}
+          <button
+            onClick={() => { smash(); onStart(category, difficulty); }}
+            className={`relative z-10 rotate-[-1deg] rounded-2xl bg-primary px-10 py-5 font-display text-4xl text-primary-foreground shadow-comic-lg transition-transform hover:rotate-0 hover:scale-105 active:translate-x-1 active:translate-y-1 ${smashing ? "animate-stamp" : "animate-breathe"}`}
+          >
             START WORKOUT
           </button>
         </div>
+
       </div>
     </div>
   );
@@ -797,10 +844,14 @@ function TopBar({ profile, onSignOut }: { profile: { username: string }; onSignO
   );
 }
 
-function NavBtn({ label, emoji, onClick }: { label: string; emoji: string; onClick: () => void }) {
+function NavBtn({ label, emoji, onClick, index = 0 }: { label: string; emoji: string; onClick: () => void; index?: number }) {
   return (
-    <button onClick={onClick} className="rounded-xl border-2 border-border bg-card px-3 py-3 text-center font-condensed text-sm font-black uppercase text-foreground shadow-comic transition-transform hover:scale-[1.03] hover:border-primary">
-      <div className="text-2xl">{emoji}</div>
+    <button
+      onClick={onClick}
+      style={stagger(index)}
+      className="animate-fade-up rounded-xl border-2 border-border bg-card px-3 py-3 text-center font-condensed text-sm font-black uppercase text-foreground shadow-comic transition-transform hover:scale-[1.03] hover:border-primary"
+    >
+      <div className="text-2xl transition-transform duration-200 hover:scale-125">{emoji}</div>
       <div className="mt-1">{label}</div>
     </button>
   );
@@ -809,16 +860,24 @@ function NavBtn({ label, emoji, onClick }: { label: string; emoji: string; onCli
 function StatsStrip({ stats }: { stats: ReturnType<typeof useStats> }) {
   return (
     <div className="mt-5 grid grid-cols-3 gap-3">
-      <StatChip label="Streak" value={`${stats.streak}d`} accent />
-      <StatChip label="Workouts" value={`${stats.totalWorkouts}`} />
-      <StatChip label="Plank sec" value={`${stats.plankSec}`} />
+      <StatChip label="Streak" value={stats.streak} suffix="d" accent flame />
+      <StatChip label="Workouts" value={stats.totalWorkouts} index={1} />
+      <StatChip label="Plank sec" value={stats.plankSec} index={2} />
     </div>
   );
 }
-function StatChip({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function StatChip({ label, value, suffix = "", accent, flame, index = 0 }: {
+  label: string; value: number; suffix?: string; accent?: boolean; flame?: boolean; index?: number;
+}) {
   return (
-    <div className={`rounded-xl border-2 p-3 text-center ${accent ? "border-primary bg-primary/10" : "border-border bg-card"}`}>
-      <div className="font-display text-3xl text-foreground">{value}</div>
+    <div
+      style={stagger(index, 70)}
+      className={`animate-fade-up rounded-xl border-2 p-3 text-center ${accent ? "border-primary bg-primary/10" : "border-border bg-card"}`}
+    >
+      <div className="font-display text-3xl text-foreground">
+        {flame && <span className="mr-1 inline-block animate-pulse-glow">🔥</span>}
+        <CountUp to={value} suffix={suffix} />
+      </div>
       <div className="font-condensed text-xs font-black uppercase text-muted-foreground">{label}</div>
     </div>
   );
@@ -834,16 +893,24 @@ function KoinShop({ koins, streak, shields, onBuy, onBack }: {
   onBuy: (date: string, kind: ShieldKind, cost: number) => Promise<void>;
   onBack: () => void;
 }) {
-  const [kind, setKind] = useState<ShieldKind>("freeze");
+  const [kind, setKind] = useState<ShieldKind>("rest");
   const [date, setDate] = useState<string>(isoDate(new Date()));
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [bought, fireBought] = useFlash(900);
 
-  const options = useMemo(() => shieldableDates(), []);
   const owned = useMemo(() => new Set(shields.map((s) => s.shield_date)), [shields]);
-  const chosen = options.find((o) => o.date === date) ?? options[1];
-  const cost = shieldCost(kind, streak, chosen.daysAhead);
+  // Freezes cover YESTERDAY only (24h grace). Rest days cover today and ahead.
+  const freezeOptions = useMemo(() => shieldableDates("freeze"), []);
+  const restOptions = useMemo(() => shieldableDates("rest"), []);
+  const yesterday = freezeOptions[0];
+  const freezeAvailable = !!yesterday && !owned.has(yesterday.date);
+  const activeKind: ShieldKind = kind === "freeze" && freezeAvailable ? "freeze" : "rest";
+  const options = activeKind === "freeze" ? freezeOptions : restOptions;
+  const chosen = options.find((o) => o.date === date) ?? options[0];
+  const cost = shieldCost(activeKind, streak, chosen.daysAhead);
   const affordable = cost <= koins.balance;
+
 
   return (
     <div className="min-h-screen px-5 py-6 pb-24">
@@ -856,7 +923,7 @@ function KoinShop({ koins, streak, shields, onBuy, onBack }: {
 
         <div className="mt-4 rounded-2xl border-4 border-secondary bg-card p-5 shadow-comic-lg">
           <div className="font-condensed text-xs font-black uppercase tracking-widest text-secondary"><T k="shop.balanceLabel">YOUR BALANCE</T></div>
-          <div className="font-display text-6xl text-primary">{koins.balance} <span className="text-2xl text-foreground">KOINS</span></div>
+          <div className="font-display text-6xl text-primary"><CountUp to={koins.balance} /> <span className="text-2xl text-foreground">KOINS</span></div>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5 font-condensed text-xs uppercase text-muted-foreground">
             <div>Workouts<div className="font-display text-lg text-foreground">+{koins.workouts}</div></div>
             <div>Trophies<div className="font-display text-lg text-foreground">+{koins.trophies}</div></div>
@@ -868,58 +935,67 @@ function KoinShop({ koins, streak, shields, onBuy, onBack }: {
 
         <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <button
-            onClick={() => setKind("freeze")}
-            className={`rounded-xl border-2 p-4 text-left ${kind === "freeze" ? "border-primary bg-primary/10 shadow-comic" : "border-border bg-card"}`}
+            disabled={!freezeAvailable}
+            onClick={() => { setKind("freeze"); setDate(freezeOptions[0].date); setErr(null); }}
+            className={`rounded-xl border-2 p-4 text-left transition-transform hover:scale-[1.02] disabled:opacity-40 ${activeKind === "freeze" ? "animate-pop-in border-primary bg-primary/10 shadow-comic" : "border-border bg-card"}`}
           >
             <div className="font-display text-2xl text-foreground">🧊 <T k="shop.freezeName">STREAK FREEZE</T></div>
-            <div className="mt-1 text-sm text-muted-foreground"><T k="shop.freezeDesc">You already missed the day. Freeze it and keep the streak. 24-hour window only.</T></div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              <T k="shop.freezeDesc">Covers YESTERDAY only — you already missed it, freeze it and keep the streak. 24-hour window.</T>
+            </div>
+            {!freezeAvailable && (
+              <div className="mt-2 font-condensed text-xs font-black uppercase text-muted-foreground">
+                {yesterday && owned.has(yesterday.date) ? "Yesterday already covered" : "Nothing to freeze"}
+              </div>
+            )}
           </button>
           <button
-            onClick={() => setKind("rest")}
-            className={`rounded-xl border-2 p-4 text-left ${kind === "rest" ? "border-primary bg-primary/10 shadow-comic" : "border-border bg-card"}`}
+            onClick={() => { setKind("rest"); setDate(restOptions[0].date); setErr(null); }}
+            className={`rounded-xl border-2 p-4 text-left transition-transform hover:scale-[1.02] ${activeKind === "rest" ? "animate-pop-in border-primary bg-primary/10 shadow-comic" : "border-border bg-card"}`}
           >
             <div className="font-display text-2xl text-foreground">😴 <T k="shop.restName">REST DAY</T></div>
-            <div className="mt-1 text-sm text-muted-foreground"><T k="shop.restDesc">Planning ahead? Book a rest day. Way cheaper, and cheaper still the earlier you buy.</T></div>
+            <div className="mt-1 text-sm text-muted-foreground"><T k="shop.restDesc">Resting today or planning ahead? Book a rest day. Way cheaper, and cheaper still the earlier you buy.</T></div>
           </button>
         </div>
 
         <div className="mt-5 rounded-xl border-2 border-border bg-card p-4">
           <div className="font-condensed text-xs font-black uppercase text-secondary"><T k="shop.pickDay">PICK THE DAY TO COVER</T></div>
           <select
-            value={date}
+            value={chosen.date}
             onChange={(e) => { setDate(e.target.value); setErr(null); }}
             className="mt-2 w-full rounded-lg border-2 border-border bg-background p-3 font-display text-lg text-foreground"
           >
-            {options
-              .filter((o) => (kind === "freeze" ? o.daysAhead <= 0 : true))
-              .map((o) => (
-                <option key={o.date} value={o.date} disabled={owned.has(o.date)}>
-                  {o.label} — {shieldCost(kind, streak, o.daysAhead)} koins{owned.has(o.date) ? " (already covered)" : ""}
-                </option>
-              ))}
+            {options.map((o) => (
+              <option key={o.date} value={o.date} disabled={owned.has(o.date)}>
+                {o.label} — {shieldCost(activeKind, streak, o.daysAhead)} koins{owned.has(o.date) ? " (already covered)" : ""}
+              </option>
+            ))}
           </select>
-          <div className="mt-3 flex items-end justify-between gap-3">
+          <div className="relative mt-3 flex items-end justify-between gap-3">
+            {bought && <Confetti />}
             <div>
               <div className="font-condensed text-xs uppercase text-muted-foreground">Price</div>
-              <div className="font-display text-4xl text-primary">{cost} koins</div>
+              <div className="font-display text-4xl text-primary"><CountUp to={cost} /> koins</div>
               <div className="font-condensed text-[11px] uppercase text-muted-foreground">
                 Streak of {streak} · {chosen.daysAhead > 0 ? `${Math.min(chosen.daysAhead, 14) * 3}% early-bird discount${chosen.daysAhead > 14 ? " (max)" : ""}` : "no discount"}
               </div>
             </div>
             <button
-              disabled={busy || !affordable || owned.has(date)}
+              disabled={busy || !affordable || owned.has(chosen.date)}
               onClick={async () => {
                 setBusy(true); setErr(null);
-                try { await onBuy(date, kind, cost); } catch (e) { setErr(e instanceof Error ? e.message : "Purchase failed."); }
+                try { await onBuy(chosen.date, activeKind, cost); fireBought(); }
+                catch (e) { setErr(e instanceof Error ? e.message : "Purchase failed."); }
                 finally { setBusy(false); }
               }}
-              className="rounded-xl bg-primary px-6 py-4 font-display text-2xl text-primary-foreground shadow-comic-lg disabled:opacity-40"
+              className={`rounded-xl bg-primary px-6 py-4 font-display text-2xl text-primary-foreground shadow-comic-lg transition-transform active:translate-x-1 active:translate-y-1 disabled:opacity-40 ${bought ? "animate-stamp" : ""}`}
             >
-              {busy ? "…" : owned.has(date) ? "COVERED" : affordable ? "BUY" : "TOO POOR"}
+              {busy ? "…" : owned.has(chosen.date) ? "COVERED" : affordable ? "BUY" : "TOO POOR"}
             </button>
           </div>
-          {err && <div className="mt-2 font-condensed text-sm font-bold uppercase text-danger">{err}</div>}
+          {err && <div className="mt-2 animate-shake font-condensed text-sm font-bold uppercase text-danger">{err}</div>}
         </div>
+
 
         <div className="mt-5 rounded-xl border-2 border-border bg-card">
           <div className="border-b-2 border-border p-3 font-display text-2xl text-foreground"><T k="shop.owned">DAYS YOU'VE COVERED</T></div>
@@ -992,15 +1068,20 @@ function StreakBoard({ myUserId, onBack }: { myUserId: string; onBack: () => voi
   );
 }
 
-function CategoryCard({ title, subtitle, emoji, img, selected, onSelect, badge }: {
-  title: string; subtitle: string; emoji: string; img: string; selected: boolean; onSelect: () => void; badge?: string;
+function CategoryCard({ title, subtitle, emoji, img, selected, onSelect, badge, index = 0 }: {
+  title: string; subtitle: string; emoji: string; img: string; selected: boolean; onSelect: () => void; badge?: string; index?: number;
 }) {
   return (
-    <button onClick={onSelect} className={`relative overflow-hidden rounded-2xl border-4 text-left transition-transform hover:scale-[1.03] ${selected ? "border-primary shadow-comic-lg" : "border-border bg-card shadow-comic"}`}>
+    <button
+      onClick={onSelect}
+      style={stagger(index, 60)}
+      className={`animate-fade-up relative overflow-hidden rounded-2xl border-4 text-left transition-transform hover:scale-[1.03] ${selected ? "border-primary shadow-comic-lg scale-[1.02]" : "border-border bg-card shadow-comic"}`}
+    >
       <div className="relative aspect-[4/5] w-full">
-        <img src={img} alt={title} className="h-full w-full object-cover" />
+        <img src={img} alt={title} className="h-full w-full object-cover transition-transform duration-500 hover:scale-105" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
-        {badge && <div className="absolute right-2 top-2 rotate-[6deg] rounded bg-secondary px-2 py-1 font-condensed text-xs font-black uppercase text-secondary-foreground shadow-comic">{badge}</div>}
+        {badge && <div className="absolute right-2 top-2 animate-pulse-glow rotate-[6deg] rounded bg-secondary px-2 py-1 font-condensed text-xs font-black uppercase text-secondary-foreground shadow-comic">{badge}</div>}
+
         <div className="absolute inset-x-0 bottom-0 p-3">
           <div className="font-display text-2xl md:text-3xl text-primary text-stroke-black">{emoji} {title}</div>
           <div className="font-condensed text-xs font-bold uppercase text-foreground/90">{subtitle}</div>
@@ -1114,10 +1195,10 @@ function Workout({ session, onExit, onFinish }: { session: Session; onExit: () =
 
         {/* Ready-set-go overlay */}
         {phase === "ready" && (
-          <div className="mt-6 flex items-center justify-center rounded-2xl border-4 border-primary bg-black/60 p-10 text-center">
+          <div className="mt-6 flex animate-pop-in items-center justify-center rounded-2xl border-4 border-primary bg-black/60 p-10 text-center">
             <div>
-              <div className="font-condensed text-lg font-black uppercase tracking-widest text-secondary">GET READY!</div>
-              <div className="mt-2 font-display text-[24vw] leading-none text-primary text-stroke-thick md:text-[180px]">
+              <div className="animate-shake font-condensed text-lg font-black uppercase tracking-widest text-secondary">GET READY!</div>
+              <div key={countdown} className="mt-2 animate-slam-in font-display text-[24vw] leading-none text-primary text-stroke-thick md:text-[180px]">
                 {countdown > 0 ? countdown : "GO!"}
               </div>
             </div>
@@ -1125,7 +1206,7 @@ function Workout({ session, onExit, onFinish }: { session: Session; onExit: () =
         )}
 
         <div className={`mt-6 grid grid-cols-1 gap-6 md:grid-cols-[1fr_1.2fr] ${phase === "ready" ? "opacity-40" : ""}`}>
-          <div className="relative">
+          <div className="relative animate-fade-up">
             <img src={trainerImg} alt="Kex demonstrating" className="w-full rounded-2xl border-4 border-primary shadow-comic-lg" />
             <div className="absolute -bottom-4 -right-4 rotate-[-4deg] rounded-lg bg-secondary px-4 py-3 font-display text-xl text-secondary-foreground shadow-comic">WATCH & LEARN</div>
             {ex.needsPullupBar && (
@@ -1136,20 +1217,28 @@ function Workout({ session, onExit, onFinish }: { session: Session; onExit: () =
             )}
           </div>
 
-          <div>
+          <div key={idx} className="animate-pop-in">
             <div className="font-condensed text-sm font-black uppercase tracking-widest text-secondary">Exercise {idx + 1}</div>
-            <h1 className="font-display text-5xl md:text-6xl leading-[0.9] text-primary text-stroke-black">{ex.emoji} {ex.name}</h1>
+            <h1 className="animate-slam-in font-display text-5xl md:text-6xl leading-[0.9] text-primary text-stroke-black">{ex.emoji} {ex.name}</h1>
 
-            <div className="mt-4 inline-block rounded-xl border-2 border-primary bg-card px-6 py-3 shadow-comic">
-              <div className="font-display text-6xl leading-none text-primary">
-                {isTimed && phase === "running" && remaining != null
-                  ? formatTime(remaining)
-                  : isTimed ? formatTime(totalSec) : item.amount}
+            {isTimed && phase === "running" && remaining != null ? (
+              <div className="mt-4 flex justify-center">
+                <TimerRing remaining={remaining} total={totalSec}>
+                  <div className="font-display text-5xl leading-none text-primary">{formatTime(remaining)}</div>
+                  <div className="font-condensed text-[10px] font-black uppercase tracking-widest text-muted-foreground">TIME LEFT</div>
+                </TimerRing>
               </div>
-              <div className="font-condensed text-sm font-black uppercase tracking-widest text-muted-foreground">
-                {isTimed && phase === "running" ? "TIME LEFT" : unitLabel}
+            ) : (
+              <div className="mt-4 inline-block rounded-xl border-2 border-primary bg-card px-6 py-3 shadow-comic">
+                <div className="font-display text-6xl leading-none text-primary">
+                  {isTimed ? formatTime(totalSec) : item.amount}
+                </div>
+                <div className="font-condensed text-sm font-black uppercase tracking-widest text-muted-foreground">
+                  {unitLabel}
+                </div>
               </div>
-            </div>
+            )}
+
 
             <div className="mt-6 rounded-xl border-2 border-border bg-card p-5 shadow-comic">
               <div className="font-display text-2xl text-foreground">HOW TO DO IT</div>

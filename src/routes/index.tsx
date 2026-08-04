@@ -1051,15 +1051,20 @@ function StreakBoard({ myUserId, onBack }: { myUserId: string; onBack: () => voi
   );
 }
 
-function CategoryCard({ title, subtitle, emoji, img, selected, onSelect, badge }: {
-  title: string; subtitle: string; emoji: string; img: string; selected: boolean; onSelect: () => void; badge?: string;
+function CategoryCard({ title, subtitle, emoji, img, selected, onSelect, badge, index = 0 }: {
+  title: string; subtitle: string; emoji: string; img: string; selected: boolean; onSelect: () => void; badge?: string; index?: number;
 }) {
   return (
-    <button onClick={onSelect} className={`relative overflow-hidden rounded-2xl border-4 text-left transition-transform hover:scale-[1.03] ${selected ? "border-primary shadow-comic-lg" : "border-border bg-card shadow-comic"}`}>
+    <button
+      onClick={onSelect}
+      style={stagger(index, 60)}
+      className={`animate-fade-up relative overflow-hidden rounded-2xl border-4 text-left transition-transform hover:scale-[1.03] ${selected ? "border-primary shadow-comic-lg scale-[1.02]" : "border-border bg-card shadow-comic"}`}
+    >
       <div className="relative aspect-[4/5] w-full">
-        <img src={img} alt={title} className="h-full w-full object-cover" />
+        <img src={img} alt={title} className="h-full w-full object-cover transition-transform duration-500 hover:scale-105" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
-        {badge && <div className="absolute right-2 top-2 rotate-[6deg] rounded bg-secondary px-2 py-1 font-condensed text-xs font-black uppercase text-secondary-foreground shadow-comic">{badge}</div>}
+        {badge && <div className="absolute right-2 top-2 animate-pulse-glow rotate-[6deg] rounded bg-secondary px-2 py-1 font-condensed text-xs font-black uppercase text-secondary-foreground shadow-comic">{badge}</div>}
+
         <div className="absolute inset-x-0 bottom-0 p-3">
           <div className="font-display text-2xl md:text-3xl text-primary text-stroke-black">{emoji} {title}</div>
           <div className="font-condensed text-xs font-bold uppercase text-foreground/90">{subtitle}</div>

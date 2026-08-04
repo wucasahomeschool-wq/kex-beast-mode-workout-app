@@ -413,11 +413,14 @@ function App() {
 
 function KoinToast({ amount }: { amount: number }) {
   return (
-    <div className="pointer-events-none fixed left-1/2 top-6 z-[95] -translate-x-1/2">
-      <div className="rotate-[-2deg] rounded-2xl border-4 border-primary bg-card px-6 py-3 font-display text-3xl text-primary shadow-comic-lg">
-        +{amount} 🪙 KEX KOINS
+    <>
+      <CoinFlight count={Math.min(14, Math.max(5, Math.round(amount / 8)))} />
+      <div className="animate-toast-drop pointer-events-none fixed left-1/2 top-6 z-[95]">
+        <div className="glow-sweep rounded-2xl border-4 border-primary bg-card px-6 py-3 font-display text-3xl text-primary shadow-comic-lg">
+          +<CountUp to={amount} /> 🪙 KEX KOINS
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

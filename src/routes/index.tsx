@@ -766,14 +766,19 @@ function Home({
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-          <NavBtn label="TOURNAMENTS" emoji="🏆" onClick={onTournaments} />
-          <NavBtn label="STREAK BOARD" emoji="🔥" onClick={onStreaks} />
-          <NavBtn label="TROPHIES" emoji="🏅" onClick={onTrophies} />
-          <NavBtn label="KOIN SHOP" emoji="🪙" onClick={onShop} />
-          <NavBtn label="CUSTOM" emoji="🛠️" onClick={onCustom} />
-          <NavBtn label="PREFERENCES" emoji="⚙️" onClick={onPrefs} />
-          <NavBtn label="MOMMY ❤️" emoji="💗" onClick={onMommy} />
+          {[
+            { label: "TOURNAMENTS", emoji: "🏆", onClick: onTournaments },
+            { label: "STREAK BOARD", emoji: "🔥", onClick: onStreaks },
+            { label: "TROPHIES", emoji: "🏅", onClick: onTrophies },
+            { label: "KOIN SHOP", emoji: "🪙", onClick: onShop },
+            { label: "CUSTOM", emoji: "🛠️", onClick: onCustom },
+            { label: "PREFERENCES", emoji: "⚙️", onClick: onPrefs },
+            { label: "MOMMY ❤️", emoji: "💗", onClick: onMommy },
+          ].map((b, i) => (
+            <NavBtn key={b.label} label={b.label} emoji={b.emoji} onClick={b.onClick} index={i} />
+          ))}
         </div>
+
 
         <StatsStrip stats={stats} />
 

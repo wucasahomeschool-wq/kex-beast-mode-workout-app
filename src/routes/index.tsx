@@ -1195,10 +1195,10 @@ function Workout({ session, onExit, onFinish }: { session: Session; onExit: () =
 
         {/* Ready-set-go overlay */}
         {phase === "ready" && (
-          <div className="mt-6 flex items-center justify-center rounded-2xl border-4 border-primary bg-black/60 p-10 text-center">
+          <div className="mt-6 flex animate-pop-in items-center justify-center rounded-2xl border-4 border-primary bg-black/60 p-10 text-center">
             <div>
-              <div className="font-condensed text-lg font-black uppercase tracking-widest text-secondary">GET READY!</div>
-              <div className="mt-2 font-display text-[24vw] leading-none text-primary text-stroke-thick md:text-[180px]">
+              <div className="animate-shake font-condensed text-lg font-black uppercase tracking-widest text-secondary">GET READY!</div>
+              <div key={countdown} className="mt-2 animate-slam-in font-display text-[24vw] leading-none text-primary text-stroke-thick md:text-[180px]">
                 {countdown > 0 ? countdown : "GO!"}
               </div>
             </div>
@@ -1206,7 +1206,7 @@ function Workout({ session, onExit, onFinish }: { session: Session; onExit: () =
         )}
 
         <div className={`mt-6 grid grid-cols-1 gap-6 md:grid-cols-[1fr_1.2fr] ${phase === "ready" ? "opacity-40" : ""}`}>
-          <div className="relative">
+          <div className="relative animate-fade-up">
             <img src={trainerImg} alt="Kex demonstrating" className="w-full rounded-2xl border-4 border-primary shadow-comic-lg" />
             <div className="absolute -bottom-4 -right-4 rotate-[-4deg] rounded-lg bg-secondary px-4 py-3 font-display text-xl text-secondary-foreground shadow-comic">WATCH & LEARN</div>
             {ex.needsPullupBar && (
@@ -1217,20 +1217,25 @@ function Workout({ session, onExit, onFinish }: { session: Session; onExit: () =
             )}
           </div>
 
-          <div>
+          <div key={idx} className="animate-pop-in">
             <div className="font-condensed text-sm font-black uppercase tracking-widest text-secondary">Exercise {idx + 1}</div>
-            <h1 className="font-display text-5xl md:text-6xl leading-[0.9] text-primary text-stroke-black">{ex.emoji} {ex.name}</h1>
+            <h1 className="animate-slam-in font-display text-5xl md:text-6xl leading-[0.9] text-primary text-stroke-black">{ex.emoji} {ex.name}</h1>
 
-            <div className="mt-4 inline-block rounded-xl border-2 border-primary bg-card px-6 py-3 shadow-comic">
-              <div className="font-display text-6xl leading-none text-primary">
-                {isTimed && phase === "running" && remaining != null
-                  ? formatTime(remaining)
-                  : isTimed ? formatTime(totalSec) : item.amount}
+            {isTimed && phase === "running" && remaining != null ? (
+              <div className="mt-4 flex justify-center">
+                <TimerRing remaining={remaining} total={totalSec} label="TIME LEFT" />
               </div>
-              <div className="font-condensed text-sm font-black uppercase tracking-widest text-muted-foreground">
-                {isTimed && phase === "running" ? "TIME LEFT" : unitLabel}
+            ) : (
+              <div className="mt-4 inline-block rounded-xl border-2 border-primary bg-card px-6 py-3 shadow-comic">
+                <div className="font-display text-6xl leading-none text-primary">
+                  {isTimed ? formatTime(totalSec) : item.amount}
+                </div>
+                <div className="font-condensed text-sm font-black uppercase tracking-widest text-muted-foreground">
+                  {unitLabel}
+                </div>
               </div>
-            </div>
+            )}
+
 
             <div className="mt-6 rounded-xl border-2 border-border bg-card p-5 shadow-comic">
               <div className="font-display text-2xl text-foreground">HOW TO DO IT</div>

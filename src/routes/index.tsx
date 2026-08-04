@@ -1223,7 +1223,10 @@ function Workout({ session, onExit, onFinish }: { session: Session; onExit: () =
 
             {isTimed && phase === "running" && remaining != null ? (
               <div className="mt-4 flex justify-center">
-                <TimerRing remaining={remaining} total={totalSec} label="TIME LEFT" />
+                <TimerRing remaining={remaining} total={totalSec}>
+                  <div className="font-display text-5xl leading-none text-primary">{formatTime(remaining)}</div>
+                  <div className="font-condensed text-[10px] font-black uppercase tracking-widest text-muted-foreground">TIME LEFT</div>
+                </TimerRing>
               </div>
             ) : (
               <div className="mt-4 inline-block rounded-xl border-2 border-primary bg-card px-6 py-3 shadow-comic">

@@ -923,7 +923,7 @@ function KoinShop({ koins, streak, shields, onBuy, onBack }: {
 
         <div className="mt-4 rounded-2xl border-4 border-secondary bg-card p-5 shadow-comic-lg">
           <div className="font-condensed text-xs font-black uppercase tracking-widest text-secondary"><T k="shop.balanceLabel">YOUR BALANCE</T></div>
-          <div className="font-display text-6xl text-primary">{koins.balance} <span className="text-2xl text-foreground">KOINS</span></div>
+          <div className="font-display text-6xl text-primary"><CountUp to={koins.balance} /> <span className="text-2xl text-foreground">KOINS</span></div>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5 font-condensed text-xs uppercase text-muted-foreground">
             <div>Workouts<div className="font-display text-lg text-foreground">+{koins.workouts}</div></div>
             <div>Trophies<div className="font-display text-lg text-foreground">+{koins.trophies}</div></div>
@@ -935,58 +935,67 @@ function KoinShop({ koins, streak, shields, onBuy, onBack }: {
 
         <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <button
-            onClick={() => setKind("freeze")}
-            className={`rounded-xl border-2 p-4 text-left ${kind === "freeze" ? "border-primary bg-primary/10 shadow-comic" : "border-border bg-card"}`}
+            disabled={!freezeAvailable}
+            onClick={() => { setKind("freeze"); setDate(freezeOptions[0].date); setErr(null); }}
+            className={`rounded-xl border-2 p-4 text-left transition-transform hover:scale-[1.02] disabled:opacity-40 ${activeKind === "freeze" ? "animate-pop-in border-primary bg-primary/10 shadow-comic" : "border-border bg-card"}`}
           >
             <div className="font-display text-2xl text-foreground">🧊 <T k="shop.freezeName">STREAK FREEZE</T></div>
-            <div className="mt-1 text-sm text-muted-foreground"><T k="shop.freezeDesc">You already missed the day. Freeze it and keep the streak. 24-hour window only.</T></div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              <T k="shop.freezeDesc">Covers YESTERDAY only — you already missed it, freeze it and keep the streak. 24-hour window.</T>
+            </div>
+            {!freezeAvailable && (
+              <div className="mt-2 font-condensed text-xs font-black uppercase text-muted-foreground">
+                {yesterday && owned.has(yesterday.date) ? "Yesterday already covered" : "Nothing to freeze"}
+              </div>
+            )}
           </button>
           <button
-            onClick={() => setKind("rest")}
-            className={`rounded-xl border-2 p-4 text-left ${kind === "rest" ? "border-primary bg-primary/10 shadow-comic" : "border-border bg-card"}`}
+            onClick={() => { setKind("rest"); setDate(restOptions[0].date); setErr(null); }}
+            className={`rounded-xl border-2 p-4 text-left transition-transform hover:scale-[1.02] ${activeKind === "rest" ? "animate-pop-in border-primary bg-primary/10 shadow-comic" : "border-border bg-card"}`}
           >
             <div className="font-display text-2xl text-foreground">😴 <T k="shop.restName">REST DAY</T></div>
-            <div className="mt-1 text-sm text-muted-foreground"><T k="shop.restDesc">Planning ahead? Book a rest day. Way cheaper, and cheaper still the earlier you buy.</T></div>
+            <div className="mt-1 text-sm text-muted-foreground"><T k="shop.restDesc">Resting today or planning ahead? Book a rest day. Way cheaper, and cheaper still the earlier you buy.</T></div>
           </button>
         </div>
 
         <div className="mt-5 rounded-xl border-2 border-border bg-card p-4">
           <div className="font-condensed text-xs font-black uppercase text-secondary"><T k="shop.pickDay">PICK THE DAY TO COVER</T></div>
           <select
-            value={date}
+            value={chosen.date}
             onChange={(e) => { setDate(e.target.value); setErr(null); }}
             className="mt-2 w-full rounded-lg border-2 border-border bg-background p-3 font-display text-lg text-foreground"
           >
-            {options
-              .filter((o) => (kind === "freeze" ? o.daysAhead <= 0 : true))
-              .map((o) => (
-                <option key={o.date} value={o.date} disabled={owned.has(o.date)}>
-                  {o.label} — {shieldCost(kind, streak, o.daysAhead)} koins{owned.has(o.date) ? " (already covered)" : ""}
-                </option>
-              ))}
+            {options.map((o) => (
+              <option key={o.date} value={o.date} disabled={owned.has(o.date)}>
+                {o.label} — {shieldCost(activeKind, streak, o.daysAhead)} koins{owned.has(o.date) ? " (already covered)" : ""}
+              </option>
+            ))}
           </select>
-          <div className="mt-3 flex items-end justify-between gap-3">
+          <div className="relative mt-3 flex items-end justify-between gap-3">
+            {bought && <Confetti />}
             <div>
               <div className="font-condensed text-xs uppercase text-muted-foreground">Price</div>
-              <div className="font-display text-4xl text-primary">{cost} koins</div>
+              <div className="font-display text-4xl text-primary"><CountUp to={cost} /> koins</div>
               <div className="font-condensed text-[11px] uppercase text-muted-foreground">
                 Streak of {streak} · {chosen.daysAhead > 0 ? `${Math.min(chosen.daysAhead, 14) * 3}% early-bird discount${chosen.daysAhead > 14 ? " (max)" : ""}` : "no discount"}
               </div>
             </div>
             <button
-              disabled={busy || !affordable || owned.has(date)}
+              disabled={busy || !affordable || owned.has(chosen.date)}
               onClick={async () => {
                 setBusy(true); setErr(null);
-                try { await onBuy(date, kind, cost); } catch (e) { setErr(e instanceof Error ? e.message : "Purchase failed."); }
+                try { await onBuy(chosen.date, activeKind, cost); fireBought(); }
+                catch (e) { setErr(e instanceof Error ? e.message : "Purchase failed."); }
                 finally { setBusy(false); }
               }}
-              className="rounded-xl bg-primary px-6 py-4 font-display text-2xl text-primary-foreground shadow-comic-lg disabled:opacity-40"
+              className={`rounded-xl bg-primary px-6 py-4 font-display text-2xl text-primary-foreground shadow-comic-lg transition-transform active:translate-x-1 active:translate-y-1 disabled:opacity-40 ${bought ? "animate-stamp" : ""}`}
             >
-              {busy ? "…" : owned.has(date) ? "COVERED" : affordable ? "BUY" : "TOO POOR"}
+              {busy ? "…" : owned.has(chosen.date) ? "COVERED" : affordable ? "BUY" : "TOO POOR"}
             </button>
           </div>
-          {err && <div className="mt-2 font-condensed text-sm font-bold uppercase text-danger">{err}</div>}
+          {err && <div className="mt-2 animate-shake font-condensed text-sm font-bold uppercase text-danger">{err}</div>}
         </div>
+
 
         <div className="mt-5 rounded-xl border-2 border-border bg-card">
           <div className="border-b-2 border-border p-3 font-display text-2xl text-foreground"><T k="shop.owned">DAYS YOU'VE COVERED</T></div>

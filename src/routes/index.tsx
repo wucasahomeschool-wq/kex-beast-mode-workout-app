@@ -40,6 +40,10 @@ import {
 import { CopyProvider, EditorBar, T, useCopyCtx } from "@/lib/kex-copy";
 import { kexEditorLogin } from "@/lib/kex-copy.functions";
 import { kexTuneWorkout } from "@/lib/kex-ai-coach.functions";
+import {
+  CoinFlight, Confetti, CountUp, ImpactBurst, LoadingRing, TimerRing,
+} from "@/components/kex-fx";
+import { stagger, useFlash } from "@/lib/kex-motion";
 
 
 export const Route = createFileRoute("/")({

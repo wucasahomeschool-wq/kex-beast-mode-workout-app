@@ -109,6 +109,7 @@ function App() {
   const { editing, stopEditor } = useCopyCtx();
   const [screen, setScreen] = useState<Screen>("auth");
   const [session, setSession] = useState<Session | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const logs = useMyLogs(userId, refreshKey);
   const shields = useMyShields(userId, refreshKey);

@@ -816,11 +816,16 @@ function Home({
           ))}
         </div>
 
-        <div className="mt-8 flex justify-center pb-16">
-          <button onClick={() => onStart(category, difficulty)} className="rotate-[-1deg] rounded-2xl bg-primary px-10 py-5 font-display text-4xl text-primary-foreground shadow-comic-lg transition-transform hover:rotate-0 hover:scale-105 active:translate-x-1 active:translate-y-1">
+        <div className="relative mt-8 flex justify-center pb-16">
+          {smashing && <ImpactBurst />}
+          <button
+            onClick={() => { smash(); onStart(category, difficulty); }}
+            className={`relative z-10 rotate-[-1deg] rounded-2xl bg-primary px-10 py-5 font-display text-4xl text-primary-foreground shadow-comic-lg transition-transform hover:rotate-0 hover:scale-105 active:translate-x-1 active:translate-y-1 ${smashing ? "animate-stamp" : "animate-breathe"}`}
+          >
             START WORKOUT
           </button>
         </div>
+
       </div>
     </div>
   );

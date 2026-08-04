@@ -838,10 +838,14 @@ function TopBar({ profile, onSignOut }: { profile: { username: string }; onSignO
   );
 }
 
-function NavBtn({ label, emoji, onClick }: { label: string; emoji: string; onClick: () => void }) {
+function NavBtn({ label, emoji, onClick, index = 0 }: { label: string; emoji: string; onClick: () => void; index?: number }) {
   return (
-    <button onClick={onClick} className="rounded-xl border-2 border-border bg-card px-3 py-3 text-center font-condensed text-sm font-black uppercase text-foreground shadow-comic transition-transform hover:scale-[1.03] hover:border-primary">
-      <div className="text-2xl">{emoji}</div>
+    <button
+      onClick={onClick}
+      style={stagger(index)}
+      className="animate-fade-up rounded-xl border-2 border-border bg-card px-3 py-3 text-center font-condensed text-sm font-black uppercase text-foreground shadow-comic transition-transform hover:scale-[1.03] hover:border-primary"
+    >
+      <div className="text-2xl transition-transform duration-200 hover:scale-125">{emoji}</div>
       <div className="mt-1">{label}</div>
     </button>
   );
@@ -850,16 +854,24 @@ function NavBtn({ label, emoji, onClick }: { label: string; emoji: string; onCli
 function StatsStrip({ stats }: { stats: ReturnType<typeof useStats> }) {
   return (
     <div className="mt-5 grid grid-cols-3 gap-3">
-      <StatChip label="Streak" value={`${stats.streak}d`} accent />
-      <StatChip label="Workouts" value={`${stats.totalWorkouts}`} />
-      <StatChip label="Plank sec" value={`${stats.plankSec}`} />
+      <StatChip label="Streak" value={stats.streak} suffix="d" accent flame />
+      <StatChip label="Workouts" value={stats.totalWorkouts} index={1} />
+      <StatChip label="Plank sec" value={stats.plankSec} index={2} />
     </div>
   );
 }
-function StatChip({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function StatChip({ label, value, suffix = "", accent, flame, index = 0 }: {
+  label: string; value: number; suffix?: string; accent?: boolean; flame?: boolean; index?: number;
+}) {
   return (
-    <div className={`rounded-xl border-2 p-3 text-center ${accent ? "border-primary bg-primary/10" : "border-border bg-card"}`}>
-      <div className="font-display text-3xl text-foreground">{value}</div>
+    <div
+      style={stagger(index, 70)}
+      className={`animate-fade-up rounded-xl border-2 p-3 text-center ${accent ? "border-primary bg-primary/10" : "border-border bg-card"}`}
+    >
+      <div className="font-display text-3xl text-foreground">
+        {flame && <span className="mr-1 inline-block animate-pulse-glow">🔥</span>}
+        <CountUp to={value} suffix={suffix} />
+      </div>
       <div className="font-condensed text-xs font-black uppercase text-muted-foreground">{label}</div>
     </div>
   );

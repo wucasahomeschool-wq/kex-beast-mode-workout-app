@@ -406,6 +406,7 @@ function App() {
       {screen === "mommy-workout" && canView && (
         <MommyWorkout userId={userId ?? "editor"} onExit={() => setScreen("mommy")} onDone={() => setScreen("mommy")} onLogDay={logMommyDay} />
       )}
+      </div>
     </div>
   );
 }

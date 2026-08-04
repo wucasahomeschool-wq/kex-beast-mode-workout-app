@@ -750,6 +750,7 @@ function Home({
 }) {
   const [category, setCategory] = useState<Category>("core");
   const [difficulty, setDifficulty] = useState<DifficultyId>(3);
+  const [smashing, smash] = useFlash(600);
   return (
     <div className="relative min-h-screen px-5 py-6">
       <div className="mx-auto max-w-5xl">

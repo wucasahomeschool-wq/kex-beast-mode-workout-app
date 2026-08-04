@@ -893,16 +893,24 @@ function KoinShop({ koins, streak, shields, onBuy, onBack }: {
   onBuy: (date: string, kind: ShieldKind, cost: number) => Promise<void>;
   onBack: () => void;
 }) {
-  const [kind, setKind] = useState<ShieldKind>("freeze");
+  const [kind, setKind] = useState<ShieldKind>("rest");
   const [date, setDate] = useState<string>(isoDate(new Date()));
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [bought, fireBought] = useFlash(900);
 
-  const options = useMemo(() => shieldableDates(), []);
   const owned = useMemo(() => new Set(shields.map((s) => s.shield_date)), [shields]);
-  const chosen = options.find((o) => o.date === date) ?? options[1];
-  const cost = shieldCost(kind, streak, chosen.daysAhead);
+  // Freezes cover YESTERDAY only (24h grace). Rest days cover today and ahead.
+  const freezeOptions = useMemo(() => shieldableDates("freeze"), []);
+  const restOptions = useMemo(() => shieldableDates("rest"), []);
+  const yesterday = freezeOptions[0];
+  const freezeAvailable = !!yesterday && !owned.has(yesterday.date);
+  const activeKind: ShieldKind = kind === "freeze" && freezeAvailable ? "freeze" : "rest";
+  const options = activeKind === "freeze" ? freezeOptions : restOptions;
+  const chosen = options.find((o) => o.date === date) ?? options[0];
+  const cost = shieldCost(activeKind, streak, chosen.daysAhead);
   const affordable = cost <= koins.balance;
+
 
   return (
     <div className="min-h-screen px-5 py-6 pb-24">

@@ -86,10 +86,16 @@ export function shieldCost(kind: ShieldKind, streak: number, daysAhead: number):
   return Math.max(10, Math.round(base * kindMult * aheadMult));
 }
 
-/** Dates you're allowed to shield: yesterday (24h window), today, and up to 60 days ahead. */
-export function shieldableDates(today = new Date()): { date: string; daysAhead: number; label: string }[] {
+/**
+ * Dates you're allowed to cover.
+ * - Streak Freezes: YESTERDAY ONLY (the 24h grace window).
+ * - Rest Days: today and up to 60 days ahead.
+ */
+export function shieldableDates(kind: ShieldKind = "rest", today = new Date()): { date: string; daysAhead: number; label: string }[] {
   const out: { date: string; daysAhead: number; label: string }[] = [];
-  for (let i = -1; i <= 60; i++) {
+  const from = kind === "freeze" ? -1 : 0;
+  const to = kind === "freeze" ? -1 : 60;
+  for (let i = from; i <= to; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() + i);
     out.push({
@@ -100,6 +106,7 @@ export function shieldableDates(today = new Date()): { date: string; daysAhead: 
   }
   return out;
 }
+
 
 /* ---------------- HOOKS ---------------- */
 

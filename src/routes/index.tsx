@@ -343,6 +343,9 @@ function App() {
   return (
     <div className="min-h-screen w-full overflow-x-hidden">
       {koinToast && <KoinToast amount={koinToast.amount} />}
+      {preparing && <LoadingRing label="PREPARING KEX WORKOUT" />}
+      <div key={screen} className="animate-pop-in">
+
 
       {screen === "auth" && (
         <Auth

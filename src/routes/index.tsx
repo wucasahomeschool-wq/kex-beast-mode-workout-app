@@ -1879,24 +1879,24 @@ function MommyWorkout({ userId, onExit, onDone, onLogDay }: { userId: string; on
           <div className="text-6xl">🌸</div>
           <h1 className="mt-2 font-display text-4xl text-mommy-primary">DAY {progress.currentDay} DONE</h1>
           <p className="mt-2 text-mommy-fg/90">You showed up. Amazing.</p>
-          <p className="mt-1 text-xs text-mommy-muted">Tell us how it felt — TOO EASY or TOO HARD will adjust future workouts and let you re-do today at the new level.</p>
+          <p className="mt-1 text-xs text-mommy-muted">Tell us how it felt — TOO EASY or TOO HARD adjusts future workouts. Either way, today counts and you move on.</p>
 
           <div className="mt-6 grid grid-cols-2 gap-2">
             <button
-              onClick={() => { nudge(1); notifyReward("💗 Mommy plan boosted", "Kicked your plan up a notch — today will restart at the new level."); onDone(); }}
+              onClick={() => { finish(1); sfx.mommyDone(); notifyReward("💗 Mommy plan boosted", "Kicked your plan up a notch for the next days."); onDone(); }}
               className="rounded-xl border-2 border-mommy-primary bg-mommy-primary py-3 font-display text-lg text-white"
             >
               TOO EASY? ⬆️
             </button>
             <button
-              onClick={() => { nudge(-1); notifyReward("💗 Mommy plan eased", "Dialed it back — today will restart at the new level."); onDone(); }}
+              onClick={() => { finish(-1); sfx.mommyDone(); notifyReward("💗 Mommy plan eased", "Dialed it back for the next days."); onDone(); }}
               className="rounded-xl border-2 border-mommy-primary bg-white py-3 font-display text-lg text-mommy-primary"
             >
               TOO HARD? ⬇️
             </button>
           </div>
           <button
-            onClick={() => { complete(); onDone(); }}
+            onClick={() => { finish(0); sfx.mommyDone(); onDone(); }}
             className="mt-3 w-full rounded-xl border-2 border-mommy-border bg-mommy-card py-3 font-display text-lg text-mommy-fg"
           >
             JUST RIGHT — ADVANCE ✓

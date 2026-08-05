@@ -1714,6 +1714,8 @@ function MommyHome({ userId, onBack, onStartDay, onLogDay }: { userId: string; o
 
   return (
     <div className="mommy-theme min-h-screen px-5 py-6">
+      {petals && <PetalBurst />}
+
       <div className="mx-auto max-w-3xl">
         <button onClick={onBack} className="font-condensed text-sm font-bold uppercase text-mommy-muted hover:text-mommy-primary">← Back to Kex world</button>
         <div className="mt-4 rounded-3xl border-4 border-mommy-primary bg-mommy-card p-4 shadow-mommy">

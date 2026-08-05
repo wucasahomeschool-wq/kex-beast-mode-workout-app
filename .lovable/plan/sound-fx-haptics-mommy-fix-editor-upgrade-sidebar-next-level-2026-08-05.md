@@ -54,9 +54,8 @@ All sounds are generated in-app with WebAudio (no downloads, instant, offline-sa
 - Rest day: slow breathing pad tone (in/out).
 - Too easy / too hard: two-note confirm.
 
-### Mercy / misc
+### Misc
 
-- Plead for mercy: comic "gulp" then Kex's verdict sting (approving chime).
 - Sign in success: short welcome riff.
 - Editor mode on/off: robotic blip.
 

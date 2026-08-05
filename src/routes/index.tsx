@@ -28,7 +28,7 @@ import {
   notifyReward, notifyTournament, scheduleStreakReminders,
 } from "@/lib/kex-notifications";
 import {
-  buildMommyPlan, checkMommyStreak, completeMommyDay, loadMommyProgress,
+  buildMommyPlan, checkMommyStreak, finishMommyDay, subscribeMommy, loadMommyProgress,
   newMommyProgress, resetMommyProgress, saveMommyProgress,
   type MommyDay, type MommyProgress,
 } from "@/lib/kex-mommy";
@@ -41,8 +41,9 @@ import { CopyProvider, EditorBar, T, useCopyCtx } from "@/lib/kex-copy";
 import { kexEditorLogin } from "@/lib/kex-copy.functions";
 import { kexTuneWorkout } from "@/lib/kex-ai-coach.functions";
 import {
-  CoinFlight, Confetti, CountUp, ImpactBurst, LoadingRing, TimerRing,
+  CoinFlight, Confetti, CountUp, ImpactBurst, LoadingRing, TimerRing, PetalBurst,
 } from "@/components/kex-fx";
+import { sfx } from "@/lib/kex-sound";
 import { stagger, useFlash } from "@/lib/kex-motion";
 
 

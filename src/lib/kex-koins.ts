@@ -83,12 +83,12 @@ export const MAX_DISCOUNT_DAYS = 14;
  * - Rest Days are 45% cheaper than a Freeze.
  * - Buying ahead is cheaper: 3% off per day, capped at 14 days out.
  */
-export function shieldCost(kind: ShieldKind, streak: number, daysAhead: number): number {
-  const base = 45 + streak * 6;
-  const kindMult = kind === "rest" ? 0.55 : 1;
+export function shieldCost(kind: ShieldKind, streak: number, daysAhead: number, econ: KoinEconomy = DEFAULT_ECONOMY): number {
+  const base = econ.freezeBase + streak * econ.freezePerStreakDay;
+  const kindMult = kind === "rest" ? econ.restMultiplier : 1;
   const ahead = Math.max(0, Math.min(daysAhead, MAX_DISCOUNT_DAYS));
-  const aheadMult = 1 - 0.03 * ahead;
-  return Math.max(10, Math.round(base * kindMult * aheadMult));
+  const aheadMult = Math.max(0.1, 1 - (econ.aheadDiscountPct / 100) * ahead);
+  return Math.max(1, Math.round(base * kindMult * aheadMult));
 }
 
 /**

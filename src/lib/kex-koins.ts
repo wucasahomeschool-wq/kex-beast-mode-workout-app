@@ -143,45 +143,51 @@ export function useKoins(opts: {
   totalWorkouts: number;
   perDifficulty: Record<number, number>;
   shields: ShieldRow[];
+  econ?: KoinEconomy;
   refreshKey?: number;
 }): { koins: KoinBreakdown; tournamentWins: Set<string> } {
   const { userId, logs, streak, bestStreak, totalWorkouts, perDifficulty, shields } = opts;
-  const [placementCoins, setPlacementCoins] = useState(0);
+  const econ = opts.econ ?? DEFAULT_ECONOMY;
+  const [placementRanks, setPlacementRanks] = useState<{ place: number; scored: boolean }[]>([]);
   const [tournamentWins, setTournamentWins] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!userId) { setPlacementCoins(0); setTournamentWins(new Set()); return; }
+    if (!userId) { setPlacementRanks([]); setTournamentWins(new Set()); return; }
     let cancelled = false;
     (async () => {
       const currentCycle = cyclesSinceAnchor();
       const cycles = Array.from({ length: Math.max(0, currentCycle) }, (_, c) => c);
       const results = await Promise.all(cycles.map((c) => fetchLeaderboard(c)));
       if (cancelled) return;
-      let coins = 0;
+      const ranks: { place: number; scored: boolean }[] = [];
       const wins = new Set<string>();
       results.forEach((rows, c) => {
         const idx = rows.findIndex((r) => r.user_id === userId);
         if (idx === -1) return;
         const row = rows[idx];
-        coins += coinsForPlacement(idx + 1, row.score > 0);
+        ranks.push({ place: idx + 1, scored: row.score > 0 });
         if (idx === 0 && row.score > 0) wins.add(TOURNAMENTS[tournamentIndexForCycle(c)].id);
       });
-      setPlacementCoins(coins);
+      setPlacementRanks(ranks);
       setTournamentWins(wins);
     })();
     return () => { cancelled = true; };
   }, [userId, opts.refreshKey]);
 
   const koins = useMemo<KoinBreakdown>(() => {
-    const workouts = logs.reduce((sum, l) => sum + coinsForLog(l), 0);
+    const workouts = logs.reduce((sum, l) => sum + coinsForLog(l, econ), 0);
     const trophyIds = unlockedTrophyIds({ bestStreak, totalWorkouts, perDifficulty, tournamentWins });
     let trophies = 0;
-    for (const id of trophyIds) trophies += coinsForTrophy(id);
-    const streakCoins = coinsForStreak(streak);
+    for (const id of trophyIds) trophies += coinsForTrophy(id, econ);
+    const streakCoins = coinsForStreak(streak, econ);
+    const placementCoins = placementRanks.reduce((s, r) => s + coinsForPlacement(r.place, r.scored, econ), 0);
     const spent = shields.reduce((s, x) => s + (x.cost ?? 0), 0);
     const balance = workouts + trophies + placementCoins + streakCoins - spent;
     return { workouts, trophies, tournaments: placementCoins, streak: streakCoins, spent, balance };
-  }, [logs, bestStreak, totalWorkouts, perDifficulty, tournamentWins, streak, shields, placementCoins]);
+  }, [logs, bestStreak, totalWorkouts, perDifficulty, tournamentWins, streak, shields, placementRanks, econ]);
+
+  return { koins, tournamentWins };
+}
 
   return { koins, tournamentWins };
 }

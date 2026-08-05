@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { prefersReducedMotion, useCountUp, useReveal, stagger } from "@/lib/kex-motion";
 
 /* ---------- scroll reveal wrapper ---------- */

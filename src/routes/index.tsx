@@ -1809,7 +1809,7 @@ function MommyPlanView({ progress, onStartDay, onRestart, onCompleteRest }: { pr
 }
 
 function MommyWorkout({ userId, onExit, onDone, onLogDay }: { userId: string; onExit: () => void; onDone: () => void; onLogDay: (day: number) => Promise<void> }) {
-  const { progress, complete, nudge } = useMommyState(userId);
+  const { progress, finish } = useMommyState(userId);
   const plan = useMemo(() => (progress ? buildMommyPlan(progress.levelOffset) : []), [progress]);
   const day: MommyDay | undefined = progress ? plan[Math.min(progress.currentDay, plan.length) - 1] : undefined;
   const [idx, setIdx] = useState(0);

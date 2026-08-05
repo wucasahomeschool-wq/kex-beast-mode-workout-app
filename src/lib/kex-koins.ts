@@ -5,6 +5,7 @@ import {
   cyclesSinceAnchor, tournamentIndexForCycle,
 } from "./kex-data";
 import { fetchLeaderboard, type WorkoutLogRow } from "./kex-store";
+import { DEFAULT_ECONOMY, type KoinEconomy } from "./kex-koin-economy";
 
 export type ShieldKind = "freeze" | "rest";
 export type ShieldRow = { id: string; user_id: string; shield_date: string; kind: ShieldKind; cost: number };

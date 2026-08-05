@@ -189,9 +189,6 @@ export function useKoins(opts: {
   return { koins, tournamentWins };
 }
 
-  return { koins, tournamentWins };
-}
-
 export async function buyShield(userId: string, date: string, kind: ShieldKind, cost: number) {
   const { error } = await supabase.from("streak_shields").insert({
     user_id: userId, shield_date: date, kind, cost,

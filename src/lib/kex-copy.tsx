@@ -223,6 +223,7 @@ function UniversalEditor() {
   const { editing, map, styles, save, reset } = useCopyCtx();
   const [target, setTarget] = useState<Target | null>(null);
   const [pending, setPending] = useState<{ el: HTMLElement; ev: MouseEvent } | null>(null);
+  const [lines, setLines] = useState<Text[] | null>(null);
   const [draft, setDraft] = useState("");
   const [style, setStyle] = useState<KexStyle>({});
   const [busy, setBusy] = useState(false);
@@ -245,20 +246,37 @@ function UniversalEditor() {
     return () => document.removeEventListener("click", onClick, true);
   }, [editing, map, styles]);
 
-  const openFor = (el: HTMLElement) => {
+  /** All editable text lines inside an element, in document order. */
+  const textLines = (el: HTMLElement): Text[] => {
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-    let node: Text | null = null;
+    const out: Text[] = [];
     while (walker.nextNode()) {
       const n = walker.currentNode as Text;
-      if (/[A-Za-z]/.test(n.nodeValue ?? "")) { node = n; break; }
+      if (!/[A-Za-z]/.test(n.nodeValue ?? "")) continue;
+      if (n.parentElement?.closest("[data-kex-editor]")) continue;
+      out.push(n);
     }
-    if (!node) return;
+    return out;
+  };
+
+  const editNode = (node: Text, fallbackEl?: HTMLElement) => {
     const key = keyForNode(node);
     const original = originalOf(node);
-    setTarget({ key, node, el: node.parentElement ?? el, original });
+    setTarget({ key, node, el: node.parentElement ?? fallbackEl ?? document.body, original });
     setDraft(map[key] ?? node.nodeValue ?? original);
     setStyle(styles[key] ?? {});
     setPending(null);
+    setLines(null);
+  };
+
+  const openFor = (el: HTMLElement) => {
+    const found = textLines(el);
+    if (found.length === 0) return;
+    setPending(null);
+    // Several lines of text in one element (e.g. a multi-line button): let the
+    // editor pick which line to work on. Each line keeps its own override.
+    if (found.length > 1) { setLines(found); return; }
+    editNode(found[0], el);
   };
 
   const interact = () => {
@@ -269,6 +287,7 @@ function UniversalEditor() {
     el.click();
     setTimeout(() => { bypass.current = false; }, 0);
   };
+
 
   if (!editing) return null;
 

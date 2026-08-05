@@ -21,39 +21,43 @@ export function daysBetween(a: Date, b: Date) {
 
 /* ---------------- EARNING ---------------- */
 
+const G = (econ: KoinEconomy, n: number) => Math.max(0, Math.round(n * econ.globalMult));
+
 /** Coins earned from a single logged workout. Harder = more coins. */
-export function coinsForLog(log: { category: string; difficulty: number }): number {
-  if (log.category === "mercy") return 0;
-  if (log.category === "mommy") return 25;
-  return 10 + (log.difficulty ?? 0) * 6;
+export function coinsForLog(log: { category: string; difficulty: number }, econ: KoinEconomy = DEFAULT_ECONOMY): number {
+  if (log.category === "mercy") return G(econ, econ.mercy);
+  if (log.category === "mommy") return G(econ, econ.mommy);
+  const level = Math.max(0, Math.min(econ.workout.length - 1, log.difficulty ?? 0));
+  return G(econ, econ.workout[level]);
 }
 
 /** Prestige value of a trophy id. The rarer the trophy, the fatter the payout. */
-export function coinsForTrophy(id: string): number {
-  if (id.startsWith("tournament-")) return 250;
-  if (id.startsWith("streak-")) return Number(id.split("-")[1]) * 5;
-  if (id.startsWith("workouts-")) return 20;
+export function coinsForTrophy(id: string, econ: KoinEconomy = DEFAULT_ECONOMY): number {
+  if (id.startsWith("tournament-")) return G(econ, econ.trophyTournament);
+  if (id.startsWith("streak-")) return G(econ, Number(id.split("-")[1]) * econ.trophyStreakFactor);
+  if (id.startsWith("workouts-")) return G(econ, econ.trophyWorkouts);
   if (id.startsWith("diff-")) {
     const level = Number(id.split("-")[1]);
-    return (level + 1) * 10;
+    return G(econ, (level + 1) * econ.trophyDiffFactor);
   }
-  return 10;
+  return G(econ, 10);
 }
 
 /** Coins for a finishing position in an ended tournament. */
-export function coinsForPlacement(place: number, scored: boolean): number {
+export function coinsForPlacement(place: number, scored: boolean, econ: KoinEconomy = DEFAULT_ECONOMY): number {
   if (!scored) return 0;
-  if (place === 1) return 400;
-  if (place === 2) return 250;
-  if (place === 3) return 150;
-  if (place <= 10) return 60;
-  return 20;
+  if (place === 1) return G(econ, econ.place1);
+  if (place === 2) return G(econ, econ.place2);
+  if (place === 3) return G(econ, econ.place3);
+  if (place <= 10) return G(econ, econ.placeTop10);
+  return G(econ, econ.placeRest);
 }
 
 /** Ongoing streak bonus: the longer you hold it, the more it pays. */
-export function coinsForStreak(streak: number): number {
-  return streak * 3;
+export function coinsForStreak(streak: number, econ: KoinEconomy = DEFAULT_ECONOMY): number {
+  return G(econ, streak * econ.streakPerDay);
 }
+
 
 export function unlockedTrophyIds(opts: {
   bestStreak: number; totalWorkouts: number; perDifficulty: Record<number, number>; tournamentWins: Set<string>;

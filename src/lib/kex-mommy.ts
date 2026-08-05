@@ -178,6 +178,14 @@ export type MommyProgress = {
 
 const KEY = "kex-mommy-progress";
 
+/* One shared source of truth so every Mommy screen sees the same day. */
+const listeners = new Set<() => void>();
+export function subscribeMommy(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => { listeners.delete(cb); };
+}
+function emit() { for (const cb of [...listeners]) cb(); }
+
 export function loadMommyProgress(userId: string | null): MommyProgress | null {
   if (typeof window === "undefined" || !userId) return null;
   try {
@@ -188,11 +196,33 @@ export function loadMommyProgress(userId: string | null): MommyProgress | null {
 
 export function saveMommyProgress(userId: string, p: MommyProgress) {
   try { localStorage.setItem(`${KEY}-${userId}`, JSON.stringify(p)); } catch {}
+  emit();
 }
 
 export function resetMommyProgress(userId: string) {
   try { localStorage.removeItem(`${KEY}-${userId}`); } catch {}
+  emit();
 }
+
+/**
+ * Finish the current day AND apply a difficulty nudge in one commit.
+ * `delta` of -1 / +1 comes from TOO HARD / TOO EASY — the new level applies to
+ * the NEXT day, the finished day always advances. Writes synchronously so the
+ * value is committed before the screen navigates away.
+ */
+export function finishMommyDay(userId: string, prog: MommyProgress, delta = 0): MommyProgress {
+  const today = todayISO();
+  const next: MommyProgress = {
+    ...prog,
+    currentDay: Math.min(30, prog.currentDay + 1),
+    levelOffset: Math.max(-3, Math.min(3, prog.levelOffset + delta)),
+    lastCompletedDate: today,
+    history: prog.history.includes(today) ? prog.history : [...prog.history, today],
+  };
+  saveMommyProgress(userId, next);
+  return next;
+}
+
 
 function todayISO(): string {
   const d = new Date();

@@ -319,6 +319,190 @@
   animation: kex-calm-breathe 4s ease-in-out infinite;
 }
 
+/* =========================================================
+   NEXT-LEVEL MOTION
+   ========================================================= */
+
+/* Timers that actually shake. */
+@keyframes kex-jitter {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  25% { transform: translate(-1px, 1px) rotate(-0.4deg); }
+  50% { transform: translate(1px, -1px) rotate(0.4deg); }
+  75% { transform: translate(1px, 1px) rotate(-0.2deg); }
+}
+@utility animate-jitter { animation: kex-jitter 0.22s steps(2, end) infinite; }
+
+@keyframes kex-jitter-hard {
+  0%, 100% { transform: translate(0, 0) rotate(0deg) scale(1); }
+  20% { transform: translate(-4px, 3px) rotate(-2deg) scale(1.02); }
+  40% { transform: translate(4px, -3px) rotate(2deg) scale(0.98); }
+  60% { transform: translate(-3px, -2px) rotate(-1.5deg) scale(1.03); }
+  80% { transform: translate(3px, 2px) rotate(1.5deg) scale(0.99); }
+}
+@utility animate-jitter-hard { animation: kex-jitter-hard 0.14s steps(2, end) infinite; }
+
+@keyframes kex-digit-punch {
+  0% { transform: scale(1.5); filter: brightness(1.8); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+@utility animate-digit-punch { animation: kex-digit-punch 0.28s cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+
+/* Rubber-stamp checkmark over a finished exercise. */
+@keyframes kex-stamp-check {
+  0% { opacity: 0; transform: scale(3) rotate(-30deg); }
+  45% { opacity: 1; transform: scale(0.86) rotate(-14deg); }
+  60% { transform: scale(1.06) rotate(-10deg); }
+  100% { opacity: 1; transform: scale(1) rotate(-12deg); }
+}
+@utility animate-stamp-check { animation: kex-stamp-check 0.4s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+
+@keyframes kex-dust {
+  0% { opacity: 0.7; transform: scale(0.3); }
+  100% { opacity: 0; transform: scale(2.4); }
+}
+@utility animate-dust { animation: kex-dust 0.55s ease-out both; }
+
+/* 3D exercise card transitions. */
+@keyframes kex-card-in {
+  0% { opacity: 0; transform: perspective(1200px) rotateY(38deg) translateX(70px) scale(0.94); }
+  100% { opacity: 1; transform: perspective(1200px) rotateY(0deg) translateX(0) scale(1); }
+}
+@utility animate-card-in { animation: kex-card-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes kex-card-out {
+  0% { opacity: 1; transform: perspective(1200px) rotateY(0deg) translateX(0) scale(1); }
+  100% { opacity: 0; transform: perspective(1200px) rotateY(-42deg) translateX(-80px) scale(0.9); }
+}
+@utility animate-card-out { animation: kex-card-out 0.32s ease-in both; }
+
+@keyframes kex-emoji-bounce {
+  0% { transform: translateY(-24px) scale(0.5); }
+  60% { transform: translateY(4px) scale(1.15); }
+  100% { transform: translateY(0) scale(1); }
+}
+@utility animate-emoji-bounce { animation: kex-emoji-bounce 0.5s cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+
+/* GO! explosion. */
+@keyframes kex-go-explode {
+  0% { opacity: 0; transform: scale(0.2); letter-spacing: -0.2em; }
+  40% { opacity: 1; transform: scale(1.35); letter-spacing: 0.06em; }
+  100% { opacity: 1; transform: scale(1); letter-spacing: 0.02em; }
+}
+@utility animate-go-explode { animation: kex-go-explode 0.5s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
+
+@keyframes kex-screen-shake {
+  0%, 100% { transform: translate(0, 0); }
+  15% { transform: translate(-8px, 5px); }
+  30% { transform: translate(8px, -5px); }
+  45% { transform: translate(-6px, -4px); }
+  60% { transform: translate(6px, 4px); }
+  80% { transform: translate(-3px, 2px); }
+}
+@utility animate-screen-shake { animation: kex-screen-shake 0.5s ease-out both; }
+
+/* Liquid progress bar. */
+@keyframes kex-liquid {
+  0% { background-position: 0 0; }
+  100% { background-position: 60px 0; }
+}
+@utility bg-liquid {
+  background-image: linear-gradient(100deg,
+    color-mix(in oklch, var(--primary) 70%, transparent) 0 25%,
+    var(--primary) 25% 50%,
+    color-mix(in oklch, var(--primary) 70%, transparent) 50% 75%,
+    var(--primary) 75% 100%);
+  background-size: 60px 100%;
+  animation: kex-liquid 1.1s linear infinite;
+}
+
+@keyframes kex-notch-pop {
+  0% { opacity: 0; transform: scale(0.2); }
+  60% { opacity: 1; transform: scale(1.7); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@utility animate-notch-pop { animation: kex-notch-pop 0.4s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+
+/* Slot-reel numbers. */
+@keyframes kex-slot {
+  0% { transform: translateY(-140%); filter: blur(3px); opacity: 0.2; }
+  70% { filter: blur(0.6px); }
+  100% { transform: translateY(0); filter: blur(0); opacity: 1; }
+}
+@utility animate-slot { animation: kex-slot 0.6s cubic-bezier(0.2, 1.3, 0.4, 1) both; }
+
+/* Koin chip juice. */
+@keyframes kex-chip-juice {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.16, 0.86); filter: brightness(1.6); }
+  60% { transform: scale(0.94, 1.08); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+@utility animate-chip-juice { animation: kex-chip-juice 0.55s cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+
+/* Leaderboard rows flying in from alternating sides. */
+@keyframes kex-row-left {
+  0% { opacity: 0; transform: translateX(-60px) rotate(-2deg); }
+  100% { opacity: 1; transform: translateX(0) rotate(0); }
+}
+@keyframes kex-row-right {
+  0% { opacity: 0; transform: translateX(60px) rotate(2deg); }
+  100% { opacity: 1; transform: translateX(0) rotate(0); }
+}
+@utility animate-row-left { animation: kex-row-left 0.4s cubic-bezier(0.22, 1, 0.36, 1) var(--kex-delay, 0s) both; }
+@utility animate-row-right { animation: kex-row-right 0.4s cubic-bezier(0.22, 1, 0.36, 1) var(--kex-delay, 0s) both; }
+
+@keyframes kex-badge-spin {
+  0% { opacity: 0; transform: rotate(-320deg) scale(0.2); }
+  100% { opacity: 1; transform: rotate(0) scale(1); }
+}
+@utility animate-badge-spin { animation: kex-badge-spin 0.5s cubic-bezier(0.3, 1.4, 0.5, 1) both; }
+
+/* Tournament reveal. */
+@keyframes kex-unfold {
+  0% { opacity: 0; transform: perspective(900px) rotateX(-88deg); transform-origin: top center; }
+  100% { opacity: 1; transform: perspective(900px) rotateX(0deg); transform-origin: top center; }
+}
+@utility animate-unfold { animation: kex-unfold 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes kex-halftone {
+  0% { background-position: 0 0; }
+  100% { background-position: 60px 60px; }
+}
+@utility bg-halftone {
+  background-image: radial-gradient(color-mix(in oklch, var(--secondary) 40%, transparent) 1.5px, transparent 1.6px);
+  background-size: 12px 12px;
+  animation: kex-halftone 18s linear infinite;
+}
+
+/* Letters dropping in one at a time. */
+@keyframes kex-letter-drop {
+  0% { opacity: 0; transform: translateY(-70px) rotate(-14deg) scale(1.4); }
+  70% { opacity: 1; transform: translateY(6px) rotate(3deg) scale(0.95); }
+  100% { opacity: 1; transform: translateY(0) rotate(0) scale(1); }
+}
+@utility animate-letter-drop { animation: kex-letter-drop 0.45s cubic-bezier(0.3, 1.5, 0.5, 1) var(--kex-delay, 0s) both; }
+
+/* Mommy — gentle petals + blooms. */
+@keyframes kex-petal {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--kex-dx, 0px), -180px) rotate(220deg); }
+}
+@utility animate-petal { animation: kex-petal 2.6s ease-out var(--kex-delay, 0s) both; }
+
+@keyframes kex-bloom {
+  0% { opacity: 0; transform: scale(0.85); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@utility animate-bloom { animation: kex-bloom 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Comic shadow collapse on press. */
+@layer base {
+  .shadow-comic:active:not(:disabled), .shadow-comic-lg:active:not(:disabled) {
+    box-shadow: 2px 2px 0 0 oklch(0.14 0.02 300);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -326,3 +510,4 @@
     transition-duration: 0.01ms !important;
   }
 }
+

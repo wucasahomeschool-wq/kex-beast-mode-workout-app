@@ -5,6 +5,7 @@ import {
   cyclesSinceAnchor, tournamentIndexForCycle,
 } from "./kex-data";
 import { fetchLeaderboard, type WorkoutLogRow } from "./kex-store";
+import { DEFAULT_ECONOMY, type KoinEconomy } from "./kex-koin-economy";
 
 export type ShieldKind = "freeze" | "rest";
 export type ShieldRow = { id: string; user_id: string; shield_date: string; kind: ShieldKind; cost: number };
@@ -21,39 +22,43 @@ export function daysBetween(a: Date, b: Date) {
 
 /* ---------------- EARNING ---------------- */
 
+const G = (econ: KoinEconomy, n: number) => Math.max(0, Math.round(n * econ.globalMult));
+
 /** Coins earned from a single logged workout. Harder = more coins. */
-export function coinsForLog(log: { category: string; difficulty: number }): number {
-  if (log.category === "mercy") return 0;
-  if (log.category === "mommy") return 25;
-  return 10 + (log.difficulty ?? 0) * 6;
+export function coinsForLog(log: { category: string; difficulty: number }, econ: KoinEconomy = DEFAULT_ECONOMY): number {
+  if (log.category === "mercy") return G(econ, econ.mercy);
+  if (log.category === "mommy") return G(econ, econ.mommy);
+  const level = Math.max(0, Math.min(econ.workout.length - 1, log.difficulty ?? 0));
+  return G(econ, econ.workout[level]);
 }
 
 /** Prestige value of a trophy id. The rarer the trophy, the fatter the payout. */
-export function coinsForTrophy(id: string): number {
-  if (id.startsWith("tournament-")) return 250;
-  if (id.startsWith("streak-")) return Number(id.split("-")[1]) * 5;
-  if (id.startsWith("workouts-")) return 20;
+export function coinsForTrophy(id: string, econ: KoinEconomy = DEFAULT_ECONOMY): number {
+  if (id.startsWith("tournament-")) return G(econ, econ.trophyTournament);
+  if (id.startsWith("streak-")) return G(econ, Number(id.split("-")[1]) * econ.trophyStreakFactor);
+  if (id.startsWith("workouts-")) return G(econ, econ.trophyWorkouts);
   if (id.startsWith("diff-")) {
     const level = Number(id.split("-")[1]);
-    return (level + 1) * 10;
+    return G(econ, (level + 1) * econ.trophyDiffFactor);
   }
-  return 10;
+  return G(econ, 10);
 }
 
 /** Coins for a finishing position in an ended tournament. */
-export function coinsForPlacement(place: number, scored: boolean): number {
+export function coinsForPlacement(place: number, scored: boolean, econ: KoinEconomy = DEFAULT_ECONOMY): number {
   if (!scored) return 0;
-  if (place === 1) return 400;
-  if (place === 2) return 250;
-  if (place === 3) return 150;
-  if (place <= 10) return 60;
-  return 20;
+  if (place === 1) return G(econ, econ.place1);
+  if (place === 2) return G(econ, econ.place2);
+  if (place === 3) return G(econ, econ.place3);
+  if (place <= 10) return G(econ, econ.placeTop10);
+  return G(econ, econ.placeRest);
 }
 
 /** Ongoing streak bonus: the longer you hold it, the more it pays. */
-export function coinsForStreak(streak: number): number {
-  return streak * 3;
+export function coinsForStreak(streak: number, econ: KoinEconomy = DEFAULT_ECONOMY): number {
+  return G(econ, streak * econ.streakPerDay);
 }
+
 
 export function unlockedTrophyIds(opts: {
   bestStreak: number; totalWorkouts: number; perDifficulty: Record<number, number>; tournamentWins: Set<string>;
@@ -78,12 +83,12 @@ export const MAX_DISCOUNT_DAYS = 14;
  * - Rest Days are 45% cheaper than a Freeze.
  * - Buying ahead is cheaper: 3% off per day, capped at 14 days out.
  */
-export function shieldCost(kind: ShieldKind, streak: number, daysAhead: number): number {
-  const base = 45 + streak * 6;
-  const kindMult = kind === "rest" ? 0.55 : 1;
+export function shieldCost(kind: ShieldKind, streak: number, daysAhead: number, econ: KoinEconomy = DEFAULT_ECONOMY): number {
+  const base = econ.freezeBase + streak * econ.freezePerStreakDay;
+  const kindMult = kind === "rest" ? econ.restMultiplier : 1;
   const ahead = Math.max(0, Math.min(daysAhead, MAX_DISCOUNT_DAYS));
-  const aheadMult = 1 - 0.03 * ahead;
-  return Math.max(10, Math.round(base * kindMult * aheadMult));
+  const aheadMult = Math.max(0.1, 1 - (econ.aheadDiscountPct / 100) * ahead);
+  return Math.max(1, Math.round(base * kindMult * aheadMult));
 }
 
 /**
@@ -138,45 +143,48 @@ export function useKoins(opts: {
   totalWorkouts: number;
   perDifficulty: Record<number, number>;
   shields: ShieldRow[];
+  econ?: KoinEconomy;
   refreshKey?: number;
 }): { koins: KoinBreakdown; tournamentWins: Set<string> } {
   const { userId, logs, streak, bestStreak, totalWorkouts, perDifficulty, shields } = opts;
-  const [placementCoins, setPlacementCoins] = useState(0);
+  const econ = opts.econ ?? DEFAULT_ECONOMY;
+  const [placementRanks, setPlacementRanks] = useState<{ place: number; scored: boolean }[]>([]);
   const [tournamentWins, setTournamentWins] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!userId) { setPlacementCoins(0); setTournamentWins(new Set()); return; }
+    if (!userId) { setPlacementRanks([]); setTournamentWins(new Set()); return; }
     let cancelled = false;
     (async () => {
       const currentCycle = cyclesSinceAnchor();
       const cycles = Array.from({ length: Math.max(0, currentCycle) }, (_, c) => c);
       const results = await Promise.all(cycles.map((c) => fetchLeaderboard(c)));
       if (cancelled) return;
-      let coins = 0;
+      const ranks: { place: number; scored: boolean }[] = [];
       const wins = new Set<string>();
       results.forEach((rows, c) => {
         const idx = rows.findIndex((r) => r.user_id === userId);
         if (idx === -1) return;
         const row = rows[idx];
-        coins += coinsForPlacement(idx + 1, row.score > 0);
+        ranks.push({ place: idx + 1, scored: row.score > 0 });
         if (idx === 0 && row.score > 0) wins.add(TOURNAMENTS[tournamentIndexForCycle(c)].id);
       });
-      setPlacementCoins(coins);
+      setPlacementRanks(ranks);
       setTournamentWins(wins);
     })();
     return () => { cancelled = true; };
   }, [userId, opts.refreshKey]);
 
   const koins = useMemo<KoinBreakdown>(() => {
-    const workouts = logs.reduce((sum, l) => sum + coinsForLog(l), 0);
+    const workouts = logs.reduce((sum, l) => sum + coinsForLog(l, econ), 0);
     const trophyIds = unlockedTrophyIds({ bestStreak, totalWorkouts, perDifficulty, tournamentWins });
     let trophies = 0;
-    for (const id of trophyIds) trophies += coinsForTrophy(id);
-    const streakCoins = coinsForStreak(streak);
+    for (const id of trophyIds) trophies += coinsForTrophy(id, econ);
+    const streakCoins = coinsForStreak(streak, econ);
+    const placementCoins = placementRanks.reduce((s, r) => s + coinsForPlacement(r.place, r.scored, econ), 0);
     const spent = shields.reduce((s, x) => s + (x.cost ?? 0), 0);
     const balance = workouts + trophies + placementCoins + streakCoins - spent;
     return { workouts, trophies, tournaments: placementCoins, streak: streakCoins, spent, balance };
-  }, [logs, bestStreak, totalWorkouts, perDifficulty, tournamentWins, streak, shields, placementCoins]);
+  }, [logs, bestStreak, totalWorkouts, perDifficulty, tournamentWins, streak, shields, placementRanks, econ]);
 
   return { koins, tournamentWins };
 }

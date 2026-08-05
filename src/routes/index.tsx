@@ -28,7 +28,7 @@ import {
   notifyReward, notifyTournament, scheduleStreakReminders,
 } from "@/lib/kex-notifications";
 import {
-  buildMommyPlan, checkMommyStreak, completeMommyDay, loadMommyProgress,
+  buildMommyPlan, checkMommyStreak, finishMommyDay, subscribeMommy, loadMommyProgress,
   newMommyProgress, resetMommyProgress, saveMommyProgress,
   type MommyDay, type MommyProgress,
 } from "@/lib/kex-mommy";
@@ -41,8 +41,9 @@ import { CopyProvider, EditorBar, T, useCopyCtx } from "@/lib/kex-copy";
 import { kexEditorLogin } from "@/lib/kex-copy.functions";
 import { kexTuneWorkout } from "@/lib/kex-ai-coach.functions";
 import {
-  CoinFlight, Confetti, CountUp, ImpactBurst, LoadingRing, TimerRing,
+  CoinFlight, Confetti, CountUp, ImpactBurst, LoadingRing, TimerRing, PetalBurst,
 } from "@/components/kex-fx";
+import { sfx } from "@/lib/kex-sound";
 import { stagger, useFlash } from "@/lib/kex-motion";
 
 
@@ -1676,38 +1677,46 @@ function Preferences({ excluded, exerciseDifficulty, onSave, onSaveExerciseDiffi
 function useMommyState(userId: string) {
   const [progress, setProgress] = useState<MommyProgress | null>(() => loadMommyProgress(userId));
   const [broken, setBroken] = useState(false);
+
+  // One shared source of truth: every Mommy screen re-reads storage on change,
+  // so the plan view can never show a stale day.
   useEffect(() => {
     const existing = loadMommyProgress(userId);
-    if (!existing) return;
-    // If more than 1 day has passed since last completion, reset.
-    const checked = checkMommyStreak(userId, existing);
-    if (checked !== existing) setBroken(true);
-    setProgress(checked);
+    if (existing) {
+      const checked = checkMommyStreak(userId, existing);
+      if (checked !== existing) setBroken(true);
+      setProgress(checked);
+    } else {
+      setProgress(null);
+    }
+    return subscribeMommy(() => setProgress(loadMommyProgress(userId)));
   }, [userId]);
+
   const begin = () => { const p = newMommyProgress(); saveMommyProgress(userId, p); setProgress(p); setBroken(false); };
-  const nudge = (delta: number) => {
-    setProgress((p) => {
-      if (!p) return p;
-      const next = { ...p, levelOffset: Math.max(-3, Math.min(3, p.levelOffset + delta)) };
-      saveMommyProgress(userId, next);
-      return next;
-    });
-  };
-  const complete = () => {
-    setProgress((p) => (p ? completeMommyDay(userId, p) : p));
+  /** Finish today's day (and optionally nudge future difficulty). Commits immediately. */
+  const finish = (delta = 0) => {
+    const p = loadMommyProgress(userId);
+    if (!p) return;
+    setProgress(finishMommyDay(userId, p, delta));
   };
   const restart = () => { resetMommyProgress(userId); begin(); };
-  return { progress, broken, begin, nudge, complete, restart };
+  return { progress, broken, begin, finish, restart };
 }
 
 function MommyHome({ userId, onBack, onStartDay, onLogDay }: { userId: string; onBack: () => void; onStartDay: () => void; onLogDay: (day: number) => Promise<void> }) {
-  const { progress, broken, begin, restart, complete } = useMommyState(userId);
+  const { progress, broken, begin, restart, finish } = useMommyState(userId);
+  const [petals, firePetals] = useFlash(2600);
   const completeRest = async () => {
     if (progress) await onLogDay(progress.currentDay);
-    complete();
+    sfx.mommyDone();
+    firePetals();
+    finish(0);
   };
+
   return (
     <div className="mommy-theme min-h-screen px-5 py-6">
+      {petals && <PetalBurst />}
+
       <div className="mx-auto max-w-3xl">
         <button onClick={onBack} className="font-condensed text-sm font-bold uppercase text-mommy-muted hover:text-mommy-primary">← Back to Kex world</button>
         <div className="mt-4 rounded-3xl border-4 border-mommy-primary bg-mommy-card p-4 shadow-mommy">
@@ -1800,7 +1809,7 @@ function MommyPlanView({ progress, onStartDay, onRestart, onCompleteRest }: { pr
 }
 
 function MommyWorkout({ userId, onExit, onDone, onLogDay }: { userId: string; onExit: () => void; onDone: () => void; onLogDay: (day: number) => Promise<void> }) {
-  const { progress, complete, nudge } = useMommyState(userId);
+  const { progress, finish } = useMommyState(userId);
   const plan = useMemo(() => (progress ? buildMommyPlan(progress.levelOffset) : []), [progress]);
   const day: MommyDay | undefined = progress ? plan[Math.min(progress.currentDay, plan.length) - 1] : undefined;
   const [idx, setIdx] = useState(0);
@@ -1870,24 +1879,24 @@ function MommyWorkout({ userId, onExit, onDone, onLogDay }: { userId: string; on
           <div className="text-6xl">🌸</div>
           <h1 className="mt-2 font-display text-4xl text-mommy-primary">DAY {progress.currentDay} DONE</h1>
           <p className="mt-2 text-mommy-fg/90">You showed up. Amazing.</p>
-          <p className="mt-1 text-xs text-mommy-muted">Tell us how it felt — TOO EASY or TOO HARD will adjust future workouts and let you re-do today at the new level.</p>
+          <p className="mt-1 text-xs text-mommy-muted">Tell us how it felt — TOO EASY or TOO HARD adjusts future workouts. Either way, today counts and you move on.</p>
 
           <div className="mt-6 grid grid-cols-2 gap-2">
             <button
-              onClick={() => { nudge(1); notifyReward("💗 Mommy plan boosted", "Kicked your plan up a notch — today will restart at the new level."); onDone(); }}
+              onClick={() => { finish(1); sfx.mommyDone(); notifyReward("💗 Mommy plan boosted", "Kicked your plan up a notch for the next days."); onDone(); }}
               className="rounded-xl border-2 border-mommy-primary bg-mommy-primary py-3 font-display text-lg text-white"
             >
               TOO EASY? ⬆️
             </button>
             <button
-              onClick={() => { nudge(-1); notifyReward("💗 Mommy plan eased", "Dialed it back — today will restart at the new level."); onDone(); }}
+              onClick={() => { finish(-1); sfx.mommyDone(); notifyReward("💗 Mommy plan eased", "Dialed it back for the next days."); onDone(); }}
               className="rounded-xl border-2 border-mommy-primary bg-white py-3 font-display text-lg text-mommy-primary"
             >
               TOO HARD? ⬇️
             </button>
           </div>
           <button
-            onClick={() => { complete(); onDone(); }}
+            onClick={() => { finish(0); sfx.mommyDone(); onDone(); }}
             className="mt-3 w-full rounded-xl border-2 border-mommy-border bg-mommy-card py-3 font-display text-lg text-mommy-fg"
           >
             JUST RIGHT — ADVANCE ✓

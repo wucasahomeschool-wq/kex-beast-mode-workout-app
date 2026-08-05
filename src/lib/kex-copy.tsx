@@ -304,6 +304,39 @@ function UniversalEditor() {
         </div>
       )}
 
+      {lines && (
+        <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/70 p-4" onClick={() => setLines(null)}>
+          <div className="max-h-[80vh] w-full max-w-sm overflow-y-auto rounded-2xl border-4 border-secondary bg-card p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="font-condensed text-xs font-black uppercase tracking-widest text-secondary">
+              Which line do you want to edit?
+            </div>
+            <div className="mt-3 space-y-2">
+              {lines.map((n, i) => {
+                const k = keyForNode(n);
+                const text = (map[k] ?? n.nodeValue ?? "").trim();
+                return (
+                  <button
+                    key={`${k}-${i}`}
+                    onClick={() => editNode(n)}
+                    className="w-full rounded-xl border-2 border-border bg-background p-3 text-left hover:border-primary"
+                  >
+                    <div className="font-condensed text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                      Line {i + 1}
+                    </div>
+                    <div className="font-display text-lg leading-tight text-foreground">
+                      {text.length > 70 ? `${text.slice(0, 70)}…` : text}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={() => setLines(null)} className="mt-3 w-full font-condensed text-xs font-black uppercase text-muted-foreground">CANCEL</button>
+          </div>
+        </div>
+      )}
+
+
+
       {target && (
         <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/70 p-3" onClick={() => setTarget(null)}>
           <div

@@ -215,7 +215,7 @@ function App() {
     return [...items, ...stretches];
   };
 
-  const startBuiltWorkout = async (category: Category, difficulty: DifficultyId) => {
+  const startBuiltWorkout = (category: Category, difficulty: DifficultyId) => {
     const w = WORKOUTS[category];
     const usable = w.routines.map((r) => ({
       r, ids: r.exerciseIds.filter((id) => !excluded.includes(id)),
@@ -223,49 +223,13 @@ function App() {
     const pick = usable.length ? usable[Math.floor(Math.random() * usable.length)] : {
       r: w.routines[0], ids: w.routines[0].exerciseIds,
     };
-    let items = buildItems(pick.ids, difficulty);
-    // Silent safety/effectiveness pass. Never blocks the workout for long.
-    setPreparing(true);
-    try {
-      const pool = Array.from(new Set(w.routines.flatMap((r) => r.exerciseIds)))
-        .filter((id) => !excluded.includes(id) && !pick.ids.includes(id))
-        .map((id) => findExerciseById(id))
-        .filter((e): e is Exercise => !!e)
-        .map((e) => ({ id: e.id, name: e.name, unit: e.unit, base: e.base }));
-      const nothing = { adjustments: [] as { id: string; amount: number }[], swaps: [] as { from: string; to: string; amount: number }[] };
-      const { adjustments, swaps } = await Promise.race([
-        kexTuneWorkout({
-          data: {
-            difficulty, category, pool,
-            items: items.filter((i) => !i.id.startsWith("stretch."))
-              .map((i) => ({ id: i.id, name: i.meta.name, amount: i.amount, unit: i.unit })),
-          },
-        }),
-        new Promise<typeof nothing>((resolve) => setTimeout(() => resolve(nothing), 12000)),
-      ]);
-      if (swaps.length) {
-        const byFrom = new Map(swaps.map((s) => [s.from, s]));
-        items = items.map((i) => {
-          const s = byFrom.get(i.id);
-          if (!s) return i;
-          const meta = findExerciseById(s.to);
-          if (!meta) return i;
-          return { id: meta.id, meta, unit: meta.unit, amount: s.amount };
-        });
-      }
-      if (adjustments.length) {
-        const byId = new Map(adjustments.map((a) => [a.id, a.amount]));
-        items = items.map((i) => (byId.has(i.id) ? { ...i, amount: byId.get(i.id)! } : i));
-      }
-    } catch {} finally {
-      setPreparing(false);
-    }
     setSession({
       category, difficulty, routineName: pick.r.name, flavor: pick.r.flavor,
-      isCustom: false, items,
+      isCustom: false, items: buildItems(pick.ids, difficulty),
     });
     setScreen("workout");
   };
+
 
 
 

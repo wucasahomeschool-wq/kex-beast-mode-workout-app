@@ -39,11 +39,15 @@ import {
 } from "@/lib/kex-koins";
 import { CopyProvider, EditorBar, T, useCopyCtx } from "@/lib/kex-copy";
 import { kexEditorLogin } from "@/lib/kex-copy.functions";
-import { kexTuneWorkout } from "@/lib/kex-ai-coach.functions";
 import {
-  CoinFlight, Confetti, CountUp, ImpactBurst, LoadingRing, TimerRing, PetalBurst,
+  kexBuildRegimen, kexGetRegimen, kexAdvanceRegimen, kexQuitRegimen,
+  type RegimenRow,
+} from "@/lib/kex-regimen.functions";
+import { DEFAULT_ECONOMY, useKoinEconomy, type KoinEconomy } from "@/lib/kex-koin-economy";
+import {
+  CoinFlight, Confetti, CountUp, ImpactBurst, TimerRing, PetalBurst,
 } from "@/components/kex-fx";
-import { sfx } from "@/lib/kex-sound";
+import { sfx, installAudioUnlock, hapticsSupported, loadSoundPrefs, saveSoundPrefs } from "@/lib/kex-sound";
 import { stagger, useFlash } from "@/lib/kex-motion";
 
 
@@ -73,7 +77,7 @@ function AppRoot() {
 }
 
 
-type Screen = "auth" | "intro" | "tour" | "home" | "workout" | "custom" | "tournaments" | "trophies" | "prefs" | "mommy" | "mommy-workout" | "shop" | "streaks";
+type Screen = "auth" | "intro" | "tour" | "regimen" | "home" | "workout" | "custom" | "tournaments" | "trophies" | "prefs" | "mommy" | "mommy-workout" | "shop" | "streaks";
 type WorkoutItem = { id: string; amount: number; unit: "reps" | "sec" | "min"; meta: Exercise };
 type Session = {
   category: Category | "custom";
@@ -110,7 +114,6 @@ function App() {
   const { editing, stopEditor } = useCopyCtx();
   const [screen, setScreen] = useState<Screen>("auth");
   const [session, setSession] = useState<Session | null>(null);
-  const [preparing, setPreparing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const logs = useMyLogs(userId, refreshKey);
   const shields = useMyShields(userId, refreshKey);
@@ -149,6 +152,7 @@ function App() {
   // PWA + notification setup once at boot.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    installAudioUnlock();
     // Register service worker in production-ish contexts only.
     const host = window.location.hostname;
     const isPreview = host.startsWith("id-preview--") || host.startsWith("preview--") || host.endsWith(".lovableproject.com") || host.endsWith(".lovableproject-dev.com");
@@ -308,7 +312,6 @@ function App() {
   return (
     <div className="min-h-screen w-full overflow-x-hidden">
       {koinToast && <KoinToast amount={koinToast.amount} />}
-      {preparing && <LoadingRing label="PREPARING KEX WORKOUT" />}
       <div key={screen} className="animate-pop-in">
 
 
@@ -824,10 +827,9 @@ function NavBtn({ label, emoji, onClick, index = 0 }: { label: string; emoji: st
 
 function StatsStrip({ stats }: { stats: ReturnType<typeof useStats> }) {
   return (
-    <div className="mt-5 grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-2 gap-3">
       <StatChip label="Streak" value={stats.streak} suffix="d" accent flame />
       <StatChip label="Workouts" value={stats.totalWorkouts} index={1} />
-      <StatChip label="Plank sec" value={stats.plankSec} index={2} />
     </div>
   );
 }

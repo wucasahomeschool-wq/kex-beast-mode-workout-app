@@ -287,6 +287,9 @@ function App() {
         plank_seconds: plankSeconds,
         pullup_reps: pullupReps,
       });
+      if (regimen) {
+        try { await kexAdvanceRegimen({ data: { id: regimen.id } }); } catch { /* keep the workout logged */ }
+      }
       setRefreshKey((k) => k + 1);
       const newWorkouts = prevWorkouts + 1;
       const workoutMilestone = WORKOUT_MILESTONES.find((n) => newWorkouts === n);

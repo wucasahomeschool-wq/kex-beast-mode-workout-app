@@ -44,6 +44,7 @@ import {
   type RegimenRow,
 } from "@/lib/kex-regimen.functions";
 import { DEFAULT_ECONOMY, useKoinEconomy, type KoinEconomy } from "@/lib/kex-koin-economy";
+import { kexBuildRegimen, kexActiveRegimen, kexQuitRegimen, type RegimenRow } from "@/lib/kex-regimen.functions";
 import {
   CoinFlight, Confetti, CountUp, ImpactBurst, TimerRing, PetalBurst,
 } from "@/components/kex-fx";
@@ -111,7 +112,7 @@ function hasToured() { try { return localStorage.getItem(TOUR_KEY) === "1"; } ca
 function App() {
   const { ready, userId } = useSession();
   const profile = useProfile(userId);
-  const { editing, stopEditor } = useCopyCtx();
+  const { editing } = useCopyCtx();
   const [screen, setScreen] = useState<Screen>("auth");
   const [session, setSession] = useState<Session | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -125,12 +126,19 @@ function App() {
   });
   const { excluded, exerciseDifficulty, save: savePrefs, saveExerciseDifficulty } = useMyPreferences(userId);
   const [justSignedUp, setJustSignedUp] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [regimen, setRegimen] = useState<RegimenRow | null>(null);
+  const { econ } = useKoinEconomy(null);
+
+  // Load the user's active AI regimen (if any).
+  useEffect(() => {
+    if (!userId) { setRegimen(null); return; }
+    let cancelled = false;
+    kexActiveRegimen().then((r) => { if (!cancelled) setRegimen(r); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [userId, refreshKey]);
   const loggingRef = useRef(false);
 
-  // Editing is for the EDITOR only — signing into a real account leaves editor mode.
-  useEffect(() => {
-    if (userId && editing) stopEditor();
-  }, [userId, editing, stopEditor]);
 
   // "+N 🪙" popup whenever the balance grows (workouts, trophies, tournaments, streak).
   const [koinToast, setKoinToast] = useState<{ id: number; amount: number } | null>(null);
@@ -237,6 +245,19 @@ function App() {
 
 
 
+  const startRegimenDay = (workoutIndex: number) => {
+    if (!regimen) return;
+    const day = regimen.plan[Math.min(regimen.current_day, regimen.days) - 1];
+    const w = day?.workouts?.[workoutIndex];
+    if (!w) return;
+    const ids = w.exerciseIds.filter((id) => !excluded.includes(id));
+    setSession({
+      category: "regimen", difficulty: regimen.difficulty as DifficultyId, routineName: w.name,
+      flavor: regimen.name, isCustom: false, items: buildItems(ids.length >= 3 ? ids : w.exerciseIds, regimen.difficulty as DifficultyId),
+    });
+    setScreen("workout");
+  };
+
   const startCustomWorkout = (difficulty: DifficultyId, ids: string[]) => {
     setSession({
       category: "custom", difficulty, routineName: "CUSTOM CHAOS",
@@ -312,6 +333,18 @@ function App() {
   return (
     <div className="min-h-screen w-full overflow-x-hidden">
       {koinToast && <KoinToast amount={koinToast.amount} />}
+      {viewProfile && canView && screen !== "auth" && (
+        <Sidebar
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          profile={viewProfile}
+          stats={stats}
+          koinBalance={koins.balance}
+          shieldCount={shields.length}
+          regimenActive={!!regimen}
+          go={(sc) => setScreen(sc)}
+        />
+      )}
       <div key={screen} className="animate-pop-in">
 
 
@@ -329,17 +362,12 @@ function App() {
       {screen === "home" && viewProfile && canView && (
         <Home
           profile={viewProfile}
-          stats={stats}
-          koinBalance={koins.balance}
-          shieldCount={shields.length}
           onStart={startBuiltWorkout}
           onCustom={() => setScreen("custom")}
-          onTournaments={() => setScreen("tournaments")}
-          onTrophies={() => setScreen("trophies")}
-          onPrefs={() => setScreen("prefs")}
-          onMommy={() => setScreen("mommy")}
-          onShop={() => setScreen("shop")}
-          onStreaks={() => setScreen("streaks")}
+          onMenu={() => setMenuOpen(true)}
+          regimen={regimen}
+          onRegimen={() => setScreen("regimen")}
+          onStartRegimenDay={startRegimenDay}
           onSignOut={async () => { await supabase.auth.signOut(); setScreen("auth"); }}
         />
       )}
@@ -348,6 +376,16 @@ function App() {
           session={session}
           onExit={() => setScreen("home")}
           onFinish={async () => { await completeWorkout(); setScreen("home"); }}
+        />
+      )}
+      {screen === "regimen" && canView && (
+        <RegimenScreen
+          regimen={regimen}
+          econ={econ}
+          onBack={() => setScreen("home")}
+          onBuilt={(r) => { setRegimen(r); setScreen("home"); }}
+          onQuit={async () => { await kexQuitRegimen(); setRegimen(null); setScreen("home"); }}
+          onStartDay={startRegimenDay}
         />
       )}
       {screen === "custom" && (

@@ -822,10 +822,19 @@ function Home({
   );
 }
 
-function TopBar({ profile, onSignOut }: { profile: { username: string }; onSignOut: () => void }) {
+function TopBar({ profile, onSignOut, onMenu }: { profile: { username: string }; onSignOut: () => void; onMenu: () => void }) {
   return (
-    <div className="flex items-center justify-between">
-      <div className="font-display text-2xl text-primary">GET RIPPED WITH KEX</div>
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => { sfx.whoosh(); onMenu(); }}
+          aria-label="Open menu"
+          className="rounded-lg border-2 border-primary bg-card px-3 py-2 font-display text-xl text-primary shadow-comic transition-transform active:scale-95"
+        >
+          ☰
+        </button>
+        <div className="font-display text-2xl text-primary">GET RIPPED WITH KEX</div>
+      </div>
       <div className="flex items-center gap-3">
         <div className="font-condensed text-sm font-black uppercase text-foreground">@{profile.username}</div>
         <button onClick={onSignOut} className="rounded-lg border-2 border-border bg-card px-3 py-1 font-condensed text-xs font-bold uppercase text-foreground hover:border-primary">Sign out</button>

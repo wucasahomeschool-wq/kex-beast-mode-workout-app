@@ -1985,3 +1985,377 @@ function MommyWorkout({ userId, onExit, onDone, onLogDay }: { userId: string; on
     </div>
   );
 }
+
+/* =========================================================
+   SIDEBAR — navigation, stats, and the EDITOR tool
+   ========================================================= */
+function Sidebar({
+  open, onClose, profile, stats, koinBalance, shieldCount, regimenActive, go,
+}: {
+  open: boolean;
+  onClose: () => void;
+  profile: { username: string };
+  stats: ReturnType<typeof useStats>;
+  koinBalance: number;
+  shieldCount: number;
+  regimenActive: boolean;
+  go: (s: Screen) => void;
+}) {
+  const { editing, authorized, setEditing, startEditor } = useCopyCtx();
+  const [pw, setPw] = useState("");
+  const [pwErr, setPwErr] = useState<string | null>(null);
+  const [askPw, setAskPw] = useState(false);
+  const [panel, setPanel] = useState(false);
+
+  const items: { label: string; emoji: string; screen: Screen }[] = [
+    { label: "TOURNAMENTS", emoji: "🏆", screen: "tournaments" },
+    { label: "STREAK BOARD", emoji: "🔥", screen: "streaks" },
+    { label: "TROPHIES", emoji: "🏅", screen: "trophies" },
+    { label: "KOIN SHOP", emoji: "🪙", screen: "shop" },
+    { label: "AI REGIMEN", emoji: "🤖", screen: "regimen" },
+    { label: "CUSTOM", emoji: "🛠️", screen: "custom" },
+    { label: "PREFERENCES", emoji: "⚙️", screen: "prefs" },
+    { label: "MOMMY ❤️", emoji: "💗", screen: "mommy" },
+  ];
+
+  const unlock = async () => {
+    setPwErr(null);
+    try {
+      const res = await kexEditorLogin({ data: { username: "EDITOR", password: pw } });
+      startEditor(res.token);
+      sfx.editorBlip();
+      setAskPw(false);
+      setPw("");
+    } catch (e) {
+      sfx.nope();
+      setPwErr(e instanceof Error ? e.message : "Wrong password.");
+    }
+  };
+
+  return (
+    <>
+      <div
+        onClick={onClose}
+        className={`fixed inset-0 z-[80] bg-black/70 transition-opacity ${open ? "opacity-100" : "pointer-events-none opacity-0"}`}
+      />
+      <aside
+        className={`fixed left-0 top-0 z-[85] flex h-full w-[86vw] max-w-sm flex-col overflow-y-auto border-r-4 border-primary bg-card px-4 py-5 shadow-comic-lg transition-transform duration-300 ${open ? "translate-x-0" : "-translate-x-full"}`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="font-display text-3xl text-primary">KEX MENU</div>
+          <button onClick={() => { sfx.popClose(); onClose(); }} className="rounded-lg border-2 border-border px-3 py-1 font-display text-xl text-foreground">✕</button>
+        </div>
+        <div className="mt-1 font-condensed text-xs font-black uppercase tracking-widest text-muted-foreground">@{profile.username}</div>
+
+        <div className="mt-4">
+          <StatsStrip stats={stats} />
+        </div>
+
+        <button
+          onClick={() => { sfx.coin(); go("shop"); onClose(); }}
+          className="mt-3 w-full rounded-xl border-2 border-secondary bg-secondary/10 px-3 py-3 text-left font-condensed text-sm font-black uppercase text-secondary"
+        >
+          🪙 {koinBalance} KEX KOINS{shieldCount > 0 ? ` · ${shieldCount} shields` : ""}
+        </button>
+
+        <nav className="mt-4 grid grid-cols-2 gap-2">
+          {items.map((b, i) => {
+            const blocked = regimenActive && (b.screen === "custom" || b.screen === "mommy");
+            return (
+              <NavBtn
+                key={b.label}
+                label={blocked ? `${b.label} (PAUSED)` : b.label}
+                emoji={b.emoji}
+                index={i}
+                onClick={() => {
+                  if (blocked) { sfx.nope(); return; }
+                  sfx.tap();
+                  go(b.screen);
+                  onClose();
+                }}
+              />
+            );
+          })}
+        </nav>
+
+        <div className="mt-5 rounded-xl border-2 border-dashed border-secondary p-3">
+          <div className="font-condensed text-xs font-black uppercase tracking-widest text-secondary">✏️ EDITOR TOOL</div>
+          {authorized ? (
+            <>
+              <button
+                onClick={() => { sfx.editorBlip(); setEditing(!editing); }}
+                className={`mt-2 w-full rounded-xl py-3 font-display text-2xl shadow-comic ${editing ? "bg-secondary text-secondary-foreground" : "border-2 border-border bg-card text-foreground"}`}
+              >
+                EDIT MODE: {editing ? "ON" : "OFF"}
+              </button>
+              <button
+                onClick={() => { sfx.tap(); setPanel((p) => !p); }}
+                className="mt-2 w-full rounded-xl border-2 border-primary bg-primary/10 py-2 font-condensed text-xs font-black uppercase text-primary"
+              >
+                🪙 KOIN VALUE SETTINGS
+              </button>
+              {panel && <EconomyPanel />}
+            </>
+          ) : askPw ? (
+            <div className="mt-2">
+              <input
+                type="password"
+                autoFocus
+                value={pw}
+                onChange={(e) => setPw(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && unlock()}
+                placeholder="Editor password"
+                className="w-full rounded-lg border-2 border-border bg-background px-3 py-2 text-foreground"
+              />
+              {pwErr && <div className="mt-1 animate-shake font-condensed text-xs font-black uppercase text-danger">{pwErr}</div>}
+              <div className="mt-2 flex gap-2">
+                <button onClick={unlock} className="flex-1 rounded-lg bg-secondary py-2 font-display text-lg text-secondary-foreground">UNLOCK</button>
+                <button onClick={() => { setAskPw(false); setPw(""); setPwErr(null); }} className="rounded-lg border-2 border-border px-3 font-condensed text-xs font-black uppercase text-muted-foreground">CANCEL</button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => { sfx.tap(); setAskPw(true); }}
+              className="mt-2 w-full rounded-xl border-2 border-secondary py-2 font-condensed text-xs font-black uppercase text-secondary"
+            >
+              UNLOCK EDITOR TOOL
+            </button>
+          )}
+        </div>
+
+        <div className="h-16" />
+      </aside>
+    </>
+  );
+}
+
+/* Koin value sliders — editor only, shared across every device. */
+function EconomyPanel() {
+  const { token } = useCopyCtx();
+  const { econ, save, resetAll } = useKoinEconomy(token);
+  const [local, setLocal] = useState<KoinEconomy>(econ);
+  useEffect(() => setLocal(econ), [econ]);
+
+  const set = (k: keyof KoinEconomy, v: number) => setLocal((e) => ({ ...e, [k]: v }));
+  const rows: { k: keyof KoinEconomy; label: string; min: number; max: number; step: number }[] = [
+    { k: "globalMult", label: "GLOBAL MULTIPLIER", min: 0, max: 5, step: 0.1 },
+    { k: "mommy", label: "MOMMY DAY", min: 0, max: 300, step: 1 },
+    { k: "mercy", label: "MERCY PLEA", min: 0, max: 300, step: 1 },
+    { k: "streakPerDay", label: "STREAK / DAY", min: 0, max: 50, step: 1 },
+    { k: "trophyStreakFactor", label: "TROPHY: STREAK ×N", min: 0, max: 50, step: 1 },
+    { k: "trophyWorkouts", label: "TROPHY: WORKOUTS", min: 0, max: 300, step: 1 },
+    { k: "trophyDiffFactor", label: "TROPHY: DIFFICULTY ×LVL", min: 0, max: 100, step: 1 },
+    { k: "trophyTournament", label: "TROPHY: TOURNAMENT WIN", min: 0, max: 2000, step: 10 },
+    { k: "place1", label: "1ST PLACE", min: 0, max: 3000, step: 10 },
+    { k: "place2", label: "2ND PLACE", min: 0, max: 3000, step: 10 },
+    { k: "place3", label: "3RD PLACE", min: 0, max: 3000, step: 10 },
+    { k: "placeTop10", label: "TOP 10", min: 0, max: 1000, step: 5 },
+    { k: "placeRest", label: "EVERYONE ELSE", min: 0, max: 1000, step: 5 },
+    { k: "regimenJackpot", label: "AI REGIMEN JACKPOT", min: 0, max: 5000, step: 25 },
+    { k: "freezeBase", label: "FREEZE BASE PRICE", min: 0, max: 500, step: 1 },
+    { k: "freezePerStreakDay", label: "FREEZE + PER STREAK DAY", min: 0, max: 100, step: 1 },
+    { k: "restMultiplier", label: "REST DAY PRICE ×", min: 0.1, max: 2, step: 0.05 },
+    { k: "aheadDiscountPct", label: "EARLY-BIRD % / DAY", min: 0, max: 20, step: 1 },
+  ];
+
+  return (
+    <div className="mt-3 space-y-3 rounded-xl border-2 border-primary bg-background p-3">
+      <div className="font-condensed text-[10px] font-black uppercase tracking-widest text-primary">WORKOUT PAYOUT PER LEVEL</div>
+      {local.workout.map((v, i) => (
+        <label key={i} className="block">
+          <div className="flex justify-between font-condensed text-[10px] font-black uppercase text-muted-foreground">
+            <span>LEVEL {i} — {DIFFICULTIES[i]?.name}</span><span className="text-primary">{v}</span>
+          </div>
+          <input
+            type="range" min={0} max={400} step={1} value={v}
+            onChange={(e) => setLocal((x) => ({ ...x, workout: x.workout.map((y, j) => (j === i ? Number(e.target.value) : y)) }))}
+            className="w-full"
+          />
+        </label>
+      ))}
+      {rows.map((r) => (
+        <label key={r.k} className="block">
+          <div className="flex justify-between font-condensed text-[10px] font-black uppercase text-muted-foreground">
+            <span>{r.label}</span><span className="text-primary">{local[r.k] as number}</span>
+          </div>
+          <input
+            type="range" min={r.min} max={r.max} step={r.step} value={local[r.k] as number}
+            onChange={(e) => set(r.k, Number(e.target.value))}
+            className="w-full"
+          />
+        </label>
+      ))}
+      <div className="flex gap-2">
+        <button onClick={() => { sfx.coinLand(); void save(local); }} className="flex-1 rounded-lg bg-primary py-2 font-display text-lg text-primary-foreground">SAVE VALUES</button>
+        <button onClick={() => { sfx.bonk(); void resetAll(); }} className="rounded-lg border-2 border-border px-3 font-condensed text-[10px] font-black uppercase text-muted-foreground">RESET</button>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   AI REGIMEN BUILDER
+   ========================================================= */
+function RegimenScreen({
+  regimen, econ, onBack, onBuilt, onQuit, onStartDay,
+}: {
+  regimen: RegimenRow | null;
+  econ: KoinEconomy;
+  onBack: () => void;
+  onBuilt: (r: RegimenRow) => void;
+  onQuit: () => Promise<void>;
+  onStartDay: (workoutIndex: number) => void;
+}) {
+  const [days, setDays] = useState(14);
+  const [difficulty, setDifficulty] = useState<DifficultyId>(3);
+  const [perDay, setPerDay] = useState(1);
+  const [goal, setGoal] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const jackpot = regimenJackpot(regimen?.days ?? days, regimen?.difficulty ?? difficulty, econ);
+
+  if (regimen) {
+    return (
+      <div className="min-h-screen px-5 py-6 pb-24">
+        <div className="mx-auto max-w-3xl">
+          <button onClick={onBack} className="font-condensed text-sm font-bold uppercase text-muted-foreground hover:text-primary">← Home</button>
+          <h1 className="mt-2 font-display text-5xl text-primary text-stroke-black">🤖 {regimen.name}</h1>
+          {regimen.goal && <p className="mt-1 italic text-foreground/80">"{regimen.goal}"</p>}
+          <div className="mt-2 font-condensed text-xs font-black uppercase tracking-widest text-accent">
+            DAY {regimen.current_day} OF {regimen.days} · {DIFFICULTIES[regimen.difficulty]?.name} · {regimen.per_day} workout{regimen.per_day > 1 ? "s" : ""}/day
+          </div>
+          <div className="mt-3 rounded-xl border-2 border-primary bg-primary/10 p-3 font-condensed text-sm font-black uppercase text-primary">
+            🪙 FINISH THE WHOLE PLAN FOR A {jackpot} KOIN JACKPOT
+          </div>
+
+          <div className="mt-5 space-y-2">
+            {regimen.plan.map((d) => {
+              const isToday = d.day === regimen.current_day;
+              const done = d.day < regimen.current_day;
+              return (
+                <div
+                  key={d.day}
+                  style={stagger(Math.min(d.day, 12), 40)}
+                  className={`animate-fade-up rounded-xl border-2 p-3 ${isToday ? "border-primary bg-primary/10 shadow-comic" : done ? "border-border bg-card opacity-60" : "border-border bg-card"}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="font-display text-xl text-foreground">
+                      {done ? "✅ " : isToday ? "▶ " : ""}DAY {d.day} — {d.title}
+                    </div>
+                    <div className="font-condensed text-[10px] font-black uppercase text-muted-foreground">
+                      {d.kind === "rest" ? "REST" : `${d.workouts.length} session${d.workouts.length > 1 ? "s" : ""}`}
+                    </div>
+                  </div>
+                  {d.note && <div className="mt-1 text-sm text-muted-foreground">{d.note}</div>}
+                  {isToday && d.kind === "workout" && (
+                    <div className="mt-2 space-y-2">
+                      {d.workouts.map((w, i) => (
+                        <button
+                          key={`${w.name}-${i}`}
+                          onClick={() => { sfx.bigTap(); onStartDay(i); }}
+                          className="w-full rounded-lg bg-primary py-3 font-display text-xl text-primary-foreground shadow-comic"
+                        >
+                          START {w.name} ({w.exerciseIds.length} exercises)
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            onClick={async () => { sfx.quit(); await onQuit(); }}
+            className="mt-6 w-full rounded-xl border-2 border-danger bg-danger/10 py-3 font-condensed text-sm font-black uppercase text-danger"
+          >
+            QUIT THIS REGIMEN (no jackpot)
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen px-5 py-6 pb-24">
+      <div className="mx-auto max-w-2xl">
+        <button onClick={onBack} className="font-condensed text-sm font-bold uppercase text-muted-foreground hover:text-primary">← Home</button>
+        <h1 className="mt-2 font-display text-5xl text-primary text-stroke-black">🤖 AI REGIMEN BUILDER</h1>
+        <p className="mt-1 text-foreground/80">
+          Tell Kex's AI coach your goal and it builds you a day-by-day plan out of real Kex exercises. While a regimen runs, everything else pauses.
+        </p>
+
+        <div className="mt-5 space-y-5 rounded-2xl border-4 border-accent bg-card p-5 shadow-comic-lg">
+          <label className="block">
+            <div className="flex justify-between font-condensed text-xs font-black uppercase text-secondary">
+              <span>HOW MANY DAYS</span><span className="text-primary">{days}</span>
+            </div>
+            <input type="range" min={1} max={60} value={days} onChange={(e) => setDays(Number(e.target.value))} className="mt-1 w-full" />
+          </label>
+
+          <label className="block">
+            <div className="flex justify-between font-condensed text-xs font-black uppercase text-secondary">
+              <span>WORKOUTS PER DAY</span><span className="text-primary">{perDay}</span>
+            </div>
+            <input type="range" min={1} max={3} value={perDay} onChange={(e) => setPerDay(Number(e.target.value))} className="mt-1 w-full" />
+          </label>
+
+          <div>
+            <div className="font-condensed text-xs font-black uppercase text-secondary">DIFFICULTY</div>
+            <select
+              value={difficulty}
+              onChange={(e) => setDifficulty(Number(e.target.value) as DifficultyId)}
+              className="mt-1 w-full rounded-lg border-2 border-border bg-background p-3 font-display text-lg text-foreground"
+            >
+              {DIFFICULTIES.map((d) => <option key={d.id} value={d.id}>Level {d.id}: {d.name}</option>)}
+            </select>
+          </div>
+
+          <label className="block">
+            <div className="font-condensed text-xs font-black uppercase text-secondary">WHAT'S THE GOAL?</div>
+            <textarea
+              rows={3}
+              value={goal}
+              onChange={(e) => setGoal(e.target.value)}
+              maxLength={600}
+              placeholder="e.g. I want a six pack by the end of the month / soccer tournament in a week / 12 minute 2 mile in 3 weeks"
+              className="mt-1 w-full rounded-lg border-2 border-border bg-background p-3 text-foreground"
+            />
+          </label>
+
+          <div className="rounded-xl border-2 border-primary bg-primary/10 p-3 font-condensed text-xs font-black uppercase text-primary">
+            🪙 JACKPOT IF YOU FINISH: {regimenJackpot(days, difficulty, econ)} KOINS
+          </div>
+
+          {err && <div className="animate-shake rounded-lg border-2 border-danger bg-danger/10 p-3 text-sm text-danger">{err}</div>}
+
+          <button
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true); setErr(null);
+              sfx.smash();
+              try {
+                const res = await kexBuildRegimen({ data: { days, difficulty, perDay, goal } });
+                if (res.ok) { sfx.fanfare(); onBuilt(res.regimen); }
+                else { sfx.nope(); setErr(res.error); }
+              } catch (e) {
+                sfx.nope();
+                setErr(e instanceof Error ? e.message : "Could not build the regimen.");
+              } finally { setBusy(false); }
+            }}
+            className="w-full rounded-2xl bg-primary py-5 font-display text-3xl text-primary-foreground shadow-comic-lg disabled:opacity-50"
+          >
+            {busy ? "KEX IS THINKING…" : "BUILD MY REGIMEN"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Jackpot scales with length and difficulty. */
+function regimenJackpot(days: number, difficulty: number, econ: KoinEconomy): number {
+  const base = econ.regimenJackpot * (days / 14) * ((difficulty + 1) / 4);
+  return Math.max(0, Math.round(base * econ.globalMult));
+}

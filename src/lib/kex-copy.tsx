@@ -411,12 +411,12 @@ function Toggle({ on, label, onClick }: { on: boolean; label: string; onClick: (
 
 /** Floating banner shown while the editor is active. */
 export function EditorBar() {
-  const { editing, stopEditor } = useCopyCtx();
+  const { editing, setEditing } = useCopyCtx();
   if (!editing) return null;
   return (
     <div data-kex-editor="1" className="fixed bottom-0 left-0 right-0 z-[90] flex items-center justify-between gap-3 border-t-4 border-secondary bg-secondary/95 px-4 py-2 text-secondary-foreground">
       <div className="font-condensed text-xs font-black uppercase tracking-widest">✏️ EDITOR MODE — tap ANY text to rewrite or restyle it</div>
-      <button onClick={stopEditor} className="rounded-lg border-2 border-secondary-foreground px-3 py-1 font-condensed text-xs font-black uppercase">EXIT EDITOR</button>
+      <button onClick={() => setEditing(false)} className="rounded-lg border-2 border-secondary-foreground px-3 py-1 font-condensed text-xs font-black uppercase">EDIT MODE OFF</button>
     </div>
   );
 }

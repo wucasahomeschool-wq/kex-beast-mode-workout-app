@@ -39,11 +39,15 @@ import {
 } from "@/lib/kex-koins";
 import { CopyProvider, EditorBar, T, useCopyCtx } from "@/lib/kex-copy";
 import { kexEditorLogin } from "@/lib/kex-copy.functions";
-import { kexTuneWorkout } from "@/lib/kex-ai-coach.functions";
 import {
-  CoinFlight, Confetti, CountUp, ImpactBurst, LoadingRing, TimerRing, PetalBurst,
+  kexBuildRegimen, kexGetRegimen, kexAdvanceRegimen, kexQuitRegimen,
+  type RegimenRow,
+} from "@/lib/kex-regimen.functions";
+import { DEFAULT_ECONOMY, useKoinEconomy, type KoinEconomy } from "@/lib/kex-koin-economy";
+import {
+  CoinFlight, Confetti, CountUp, ImpactBurst, TimerRing, PetalBurst,
 } from "@/components/kex-fx";
-import { sfx } from "@/lib/kex-sound";
+import { sfx, installAudioUnlock, hapticsSupported, loadSoundPrefs, saveSoundPrefs } from "@/lib/kex-sound";
 import { stagger, useFlash } from "@/lib/kex-motion";
 
 
@@ -73,7 +77,7 @@ function AppRoot() {
 }
 
 
-type Screen = "auth" | "intro" | "tour" | "home" | "workout" | "custom" | "tournaments" | "trophies" | "prefs" | "mommy" | "mommy-workout" | "shop" | "streaks";
+type Screen = "auth" | "intro" | "tour" | "regimen" | "home" | "workout" | "custom" | "tournaments" | "trophies" | "prefs" | "mommy" | "mommy-workout" | "shop" | "streaks";
 type WorkoutItem = { id: string; amount: number; unit: "reps" | "sec" | "min"; meta: Exercise };
 type Session = {
   category: Category | "custom";
@@ -107,10 +111,9 @@ function hasToured() { try { return localStorage.getItem(TOUR_KEY) === "1"; } ca
 function App() {
   const { ready, userId } = useSession();
   const profile = useProfile(userId);
-  const { editing, stopEditor } = useCopyCtx();
+  const { editing } = useCopyCtx();
   const [screen, setScreen] = useState<Screen>("auth");
   const [session, setSession] = useState<Session | null>(null);
-  const [preparing, setPreparing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const logs = useMyLogs(userId, refreshKey);
   const shields = useMyShields(userId, refreshKey);
@@ -122,12 +125,19 @@ function App() {
   });
   const { excluded, exerciseDifficulty, save: savePrefs, saveExerciseDifficulty } = useMyPreferences(userId);
   const [justSignedUp, setJustSignedUp] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [regimen, setRegimen] = useState<RegimenRow | null>(null);
+  const { econ } = useKoinEconomy(null);
+
+  // Load the user's active AI regimen (if any).
+  useEffect(() => {
+    if (!userId) { setRegimen(null); return; }
+    let cancelled = false;
+    kexGetRegimen().then((r: RegimenRow | null) => { if (!cancelled) setRegimen(r); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [userId, refreshKey]);
   const loggingRef = useRef(false);
 
-  // Editing is for the EDITOR only — signing into a real account leaves editor mode.
-  useEffect(() => {
-    if (userId && editing) stopEditor();
-  }, [userId, editing, stopEditor]);
 
   // "+N 🪙" popup whenever the balance grows (workouts, trophies, tournaments, streak).
   const [koinToast, setKoinToast] = useState<{ id: number; amount: number } | null>(null);
@@ -149,6 +159,7 @@ function App() {
   // PWA + notification setup once at boot.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    installAudioUnlock();
     // Register service worker in production-ish contexts only.
     const host = window.location.hostname;
     const isPreview = host.startsWith("id-preview--") || host.startsWith("preview--") || host.endsWith(".lovableproject.com") || host.endsWith(".lovableproject-dev.com");
@@ -215,7 +226,7 @@ function App() {
     return [...items, ...stretches];
   };
 
-  const startBuiltWorkout = async (category: Category, difficulty: DifficultyId) => {
+  const startBuiltWorkout = (category: Category, difficulty: DifficultyId) => {
     const w = WORKOUTS[category];
     const usable = w.routines.map((r) => ({
       r, ids: r.exerciseIds.filter((id) => !excluded.includes(id)),
@@ -223,51 +234,28 @@ function App() {
     const pick = usable.length ? usable[Math.floor(Math.random() * usable.length)] : {
       r: w.routines[0], ids: w.routines[0].exerciseIds,
     };
-    let items = buildItems(pick.ids, difficulty);
-    // Silent safety/effectiveness pass. Never blocks the workout for long.
-    setPreparing(true);
-    try {
-      const pool = Array.from(new Set(w.routines.flatMap((r) => r.exerciseIds)))
-        .filter((id) => !excluded.includes(id) && !pick.ids.includes(id))
-        .map((id) => findExerciseById(id))
-        .filter((e): e is Exercise => !!e)
-        .map((e) => ({ id: e.id, name: e.name, unit: e.unit, base: e.base }));
-      const nothing = { adjustments: [] as { id: string; amount: number }[], swaps: [] as { from: string; to: string; amount: number }[] };
-      const { adjustments, swaps } = await Promise.race([
-        kexTuneWorkout({
-          data: {
-            difficulty, category, pool,
-            items: items.filter((i) => !i.id.startsWith("stretch."))
-              .map((i) => ({ id: i.id, name: i.meta.name, amount: i.amount, unit: i.unit })),
-          },
-        }),
-        new Promise<typeof nothing>((resolve) => setTimeout(() => resolve(nothing), 12000)),
-      ]);
-      if (swaps.length) {
-        const byFrom = new Map(swaps.map((s) => [s.from, s]));
-        items = items.map((i) => {
-          const s = byFrom.get(i.id);
-          if (!s) return i;
-          const meta = findExerciseById(s.to);
-          if (!meta) return i;
-          return { id: meta.id, meta, unit: meta.unit, amount: s.amount };
-        });
-      }
-      if (adjustments.length) {
-        const byId = new Map(adjustments.map((a) => [a.id, a.amount]));
-        items = items.map((i) => (byId.has(i.id) ? { ...i, amount: byId.get(i.id)! } : i));
-      }
-    } catch {} finally {
-      setPreparing(false);
-    }
     setSession({
       category, difficulty, routineName: pick.r.name, flavor: pick.r.flavor,
-      isCustom: false, items,
+      isCustom: false, items: buildItems(pick.ids, difficulty),
     });
     setScreen("workout");
   };
 
 
+
+
+  const startRegimenDay = (workoutIndex: number) => {
+    if (!regimen) return;
+    const day = regimen.plan[Math.min(regimen.current_day, regimen.days) - 1];
+    const w = day?.workouts?.[workoutIndex];
+    if (!w) return;
+    const ids = w.exerciseIds.filter((id) => !excluded.includes(id));
+    setSession({
+      category: "custom", difficulty: regimen.difficulty as DifficultyId, routineName: w.name,
+      flavor: regimen.name, isCustom: false, items: buildItems(ids.length >= 3 ? ids : w.exerciseIds, regimen.difficulty as DifficultyId),
+    });
+    setScreen("workout");
+  };
 
   const startCustomWorkout = (difficulty: DifficultyId, ids: string[]) => {
     setSession({
@@ -299,6 +287,9 @@ function App() {
         plank_seconds: plankSeconds,
         pullup_reps: pullupReps,
       });
+      if (regimen) {
+        try { await kexAdvanceRegimen({ data: { id: regimen.id } }); } catch { /* keep the workout logged */ }
+      }
       setRefreshKey((k) => k + 1);
       const newWorkouts = prevWorkouts + 1;
       const workoutMilestone = WORKOUT_MILESTONES.find((n) => newWorkouts === n);
@@ -344,7 +335,18 @@ function App() {
   return (
     <div className="min-h-screen w-full overflow-x-hidden">
       {koinToast && <KoinToast amount={koinToast.amount} />}
-      {preparing && <LoadingRing label="PREPARING KEX WORKOUT" />}
+      {viewProfile && canView && screen !== "auth" && (
+        <Sidebar
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          profile={viewProfile}
+          stats={stats}
+          koinBalance={koins.balance}
+          shieldCount={shields.length}
+          regimenActive={!!regimen}
+          go={(sc) => setScreen(sc)}
+        />
+      )}
       <div key={screen} className="animate-pop-in">
 
 
@@ -362,17 +364,12 @@ function App() {
       {screen === "home" && viewProfile && canView && (
         <Home
           profile={viewProfile}
-          stats={stats}
-          koinBalance={koins.balance}
-          shieldCount={shields.length}
           onStart={startBuiltWorkout}
           onCustom={() => setScreen("custom")}
-          onTournaments={() => setScreen("tournaments")}
-          onTrophies={() => setScreen("trophies")}
-          onPrefs={() => setScreen("prefs")}
-          onMommy={() => setScreen("mommy")}
-          onShop={() => setScreen("shop")}
-          onStreaks={() => setScreen("streaks")}
+          onMenu={() => setMenuOpen(true)}
+          regimen={regimen}
+          onRegimen={() => setScreen("regimen")}
+          onStartRegimenDay={startRegimenDay}
           onSignOut={async () => { await supabase.auth.signOut(); setScreen("auth"); }}
         />
       )}
@@ -381,6 +378,16 @@ function App() {
           session={session}
           onExit={() => setScreen("home")}
           onFinish={async () => { await completeWorkout(); setScreen("home"); }}
+        />
+      )}
+      {screen === "regimen" && canView && (
+        <RegimenScreen
+          regimen={regimen}
+          econ={econ}
+          onBack={() => setScreen("home")}
+          onBuilt={(r) => { setRegimen(r); setScreen("home"); }}
+          onQuit={async () => { if (regimen) await kexQuitRegimen({ data: { id: regimen.id } }); setRegimen(null); setScreen("home"); }}
+          onStartDay={startRegimenDay}
         />
       )}
       {screen === "custom" && (
@@ -733,110 +740,141 @@ function FeatureTour({ onDone }: { onDone: () => void }) {
    HOME
    ========================================================= */
 function Home({
-  profile, stats, koinBalance, shieldCount, onStart, onCustom, onTournaments, onTrophies, onPrefs, onMommy, onShop, onStreaks, onSignOut,
+  profile, onStart, onCustom, onMenu, onSignOut, regimen, onRegimen, onStartRegimenDay,
 }: {
   profile: { username: string };
-  stats: ReturnType<typeof useStats>;
-  koinBalance: number;
-  shieldCount: number;
   onStart: (c: Category, d: DifficultyId) => void;
   onCustom: () => void;
-  onTournaments: () => void;
-  onTrophies: () => void;
-  onPrefs: () => void;
-  onMommy: () => void;
-  onShop: () => void;
-  onStreaks: () => void;
+  onMenu: () => void;
   onSignOut: () => void;
+  regimen: RegimenRow | null;
+  onRegimen: () => void;
+  onStartRegimenDay: (workoutIndex: number) => void;
 }) {
   const [category, setCategory] = useState<Category>("core");
   const [difficulty, setDifficulty] = useState<DifficultyId>(3);
   const [smashing, smash] = useFlash(600);
+  const locked = !!regimen;
+  const today = regimen?.plan?.[Math.min(regimen.current_day, regimen.days) - 1];
+
   return (
     <div className="relative min-h-screen px-5 py-6">
       <div className="mx-auto max-w-5xl">
-        <TopBar profile={profile} onSignOut={onSignOut} />
+        <TopBar profile={profile} onSignOut={onSignOut} onMenu={onMenu} />
 
-        <div className="mt-3">
-          <button
-            onClick={onShop}
-            className="w-full rounded-xl border-2 border-secondary bg-secondary/10 px-4 py-3 text-left font-condensed text-sm font-black uppercase text-secondary shadow-comic transition hover:bg-secondary/20"
-          >
-            🪙 <T k="home.shopBtn">KEX KOINS</T>: {koinBalance} · <T k="home.shopBtn2">BUY A STREAK FREEZE OR REST DAY</T>{shieldCount > 0 ? ` · ${shieldCount} owned` : ""}
-          </button>
-        </div>
+        {locked ? (
+          <div className="mt-6 rounded-2xl border-4 border-accent bg-card p-5 shadow-comic-lg">
+            <div className="font-condensed text-xs font-black uppercase tracking-widest text-accent">
+              AI REGIMEN ACTIVE · DAY {regimen!.current_day} OF {regimen!.days}
+            </div>
+            <h2 className="mt-1 font-display text-4xl text-primary text-stroke-black">{regimen!.name}</h2>
+            {regimen!.goal && <p className="mt-1 italic text-foreground/80">"{regimen!.goal}"</p>}
+            <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-full bg-accent transition-all" style={{ width: `${((regimen!.current_day - 1) / regimen!.days) * 100}%` }} />
+            </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-          {[
-            { label: "TOURNAMENTS", emoji: "🏆", onClick: onTournaments },
-            { label: "STREAK BOARD", emoji: "🔥", onClick: onStreaks },
-            { label: "TROPHIES", emoji: "🏅", onClick: onTrophies },
-            { label: "KOIN SHOP", emoji: "🪙", onClick: onShop },
-            { label: "CUSTOM", emoji: "🛠️", onClick: onCustom },
-            { label: "PREFERENCES", emoji: "⚙️", onClick: onPrefs },
-            { label: "MOMMY ❤️", emoji: "💗", onClick: onMommy },
-          ].map((b, i) => (
-            <NavBtn key={b.label} label={b.label} emoji={b.emoji} onClick={b.onClick} index={i} />
-          ))}
-        </div>
-
-
-        <StatsStrip stats={stats} />
-
-        <h2 className="mt-8 font-display text-5xl md:text-6xl text-foreground">
-          <T k="home.pickHeading">Pick your poison.</T>
-        </h2>
-
-        <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-          <CategoryCard title="CORE" subtitle="The main event" emoji="🔥" img={CATEGORY_IMG.core} selected={category === "core"} onSelect={() => setCategory("core")} badge="★ MAIN" index={0} />
-          <CategoryCard title="UPPER" subtitle="Side quest" emoji="💪" img={CATEGORY_IMG.upper} selected={category === "upper"} onSelect={() => setCategory("upper")} index={1} />
-          <CategoryCard title="LEGS" subtitle="Do not skip" emoji="🦵" img={CATEGORY_IMG.legs} selected={category === "legs"} onSelect={() => setCategory("legs")} index={2} />
-          <CategoryCard title="CARDIO" subtitle="Treadmill terror" emoji="🏃" img={CATEGORY_IMG.cardio} selected={category === "cardio"} onSelect={() => setCategory("cardio")} index={3} />
-          <CategoryCard title="SOCCER" subtitle="Garage drills" emoji="⚽" img={CATEGORY_IMG.soccer} selected={category === "soccer"} onSelect={() => setCategory("soccer")} index={4} />
-        </div>
-
-
-        <h3 className="mt-10 font-display text-4xl text-foreground">
-          How much <span className="text-primary">Kex</span> can you handle?
-        </h3>
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {DIFFICULTIES.map((d) => (
-            <button
-              key={d.id}
-              onClick={() => setDifficulty(d.id)}
-              className={`relative overflow-hidden rounded-xl border-2 p-4 text-left transition-transform hover:scale-[1.02] ${difficulty === d.id ? "border-primary shadow-comic-pink" : "border-border bg-card"}`}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className={`inline-block rounded px-2 py-0.5 font-condensed text-xs font-black uppercase ${d.color}`}>Level {d.id}</div>
-                  <div className="mt-1 font-display text-2xl leading-none text-foreground">{d.name}</div>
-                  <div className="mt-1 text-sm text-muted-foreground">{d.tag}</div>
-                </div>
-                <div className="font-display text-3xl text-primary">{"★".repeat(d.id + 1)}</div>
+            {today?.kind === "rest" ? (
+              <div className="mt-4">
+                <div className="font-display text-3xl text-foreground">😴 {today.title}</div>
+                <p className="mt-1 text-foreground/80">{today.note}</p>
               </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {(today?.workouts ?? []).map((w, i) => (
+                  <button
+                    key={`${w.name}-${i}`}
+                    onClick={() => { sfx.bigTap(); onStartRegimenDay(i); }}
+                    style={stagger(i)}
+                    className="animate-fade-up w-full rounded-xl border-2 border-primary bg-primary/10 p-4 text-left transition-transform hover:scale-[1.01]"
+                  >
+                    <div className="font-display text-2xl text-primary">▶ {w.name}</div>
+                    <div className="font-condensed text-xs uppercase text-muted-foreground">{w.exerciseIds.length} exercises</div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <button onClick={() => { sfx.tap(); onRegimen(); }} className="mt-4 w-full rounded-xl border-2 border-border bg-card py-3 font-condensed text-sm font-black uppercase text-foreground">
+              VIEW THE WHOLE PLAN
             </button>
-          ))}
-        </div>
+            <p className="mt-2 text-center font-condensed text-[11px] uppercase text-muted-foreground">
+              Other courses are paused while a regimen is running.
+            </p>
+          </div>
+        ) : (
+          <>
+            <h2 className="mt-8 font-display text-5xl md:text-6xl text-foreground">
+              <T k="home.pickHeading">Pick your poison.</T>
+            </h2>
 
-        <div className="relative mt-8 flex justify-center pb-16">
-          {smashing && <ImpactBurst />}
-          <button
-            onClick={() => { smash(); onStart(category, difficulty); }}
-            className={`relative z-10 rotate-[-1deg] rounded-2xl bg-primary px-10 py-5 font-display text-4xl text-primary-foreground shadow-comic-lg transition-transform hover:rotate-0 hover:scale-105 active:translate-x-1 active:translate-y-1 ${smashing ? "animate-stamp" : "animate-breathe"}`}
-          >
-            START WORKOUT
-          </button>
-        </div>
+            <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-5">
+              <CategoryCard title="CORE" subtitle="The main event" emoji="🔥" img={CATEGORY_IMG.core} selected={category === "core"} onSelect={() => { sfx.tap(); setCategory("core"); }} badge="★ MAIN" index={0} />
+              <CategoryCard title="UPPER" subtitle="Side quest" emoji="💪" img={CATEGORY_IMG.upper} selected={category === "upper"} onSelect={() => { sfx.tap(); setCategory("upper"); }} index={1} />
+              <CategoryCard title="LEGS" subtitle="Do not skip" emoji="🦵" img={CATEGORY_IMG.legs} selected={category === "legs"} onSelect={() => { sfx.tap(); setCategory("legs"); }} index={2} />
+              <CategoryCard title="CARDIO" subtitle="Treadmill terror" emoji="🏃" img={CATEGORY_IMG.cardio} selected={category === "cardio"} onSelect={() => { sfx.tap(); setCategory("cardio"); }} index={3} />
+              <CategoryCard title="SOCCER" subtitle="Garage drills" emoji="⚽" img={CATEGORY_IMG.soccer} selected={category === "soccer"} onSelect={() => { sfx.tap(); setCategory("soccer"); }} index={4} />
+            </div>
 
+            <h3 className="mt-10 font-display text-4xl text-foreground">
+              How much <span className="text-primary">Kex</span> can you handle?
+            </h3>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {DIFFICULTIES.map((d) => (
+                <button
+                  key={d.id}
+                  onClick={() => { sfx.notch(); setDifficulty(d.id); }}
+                  className={`relative overflow-hidden rounded-xl border-2 p-4 text-left transition-transform hover:scale-[1.02] ${difficulty === d.id ? "border-primary shadow-comic-pink" : "border-border bg-card"}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className={`inline-block rounded px-2 py-0.5 font-condensed text-xs font-black uppercase ${d.color}`}>Level {d.id}</div>
+                      <div className="mt-1 font-display text-2xl leading-none text-foreground">{d.name}</div>
+                      <div className="mt-1 text-sm text-muted-foreground">{d.tag}</div>
+                    </div>
+                    <div className="font-display text-3xl text-primary">{"★".repeat(d.id + 1)}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="relative mt-8 flex justify-center">
+              {smashing && <ImpactBurst />}
+              <button
+                onClick={() => { sfx.smash(); smash(); onStart(category, difficulty); }}
+                className={`relative z-10 rotate-[-1deg] rounded-2xl bg-primary px-10 py-5 font-display text-4xl text-primary-foreground shadow-comic-lg transition-transform hover:rotate-0 hover:scale-105 active:translate-x-1 active:translate-y-1 ${smashing ? "animate-stamp" : "animate-breathe"}`}
+              >
+                START WORKOUT
+              </button>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-3 pb-20 sm:grid-cols-2">
+              <button onClick={() => { sfx.tap(); onCustom(); }} className="rounded-xl border-2 border-border bg-card py-4 font-display text-2xl text-foreground shadow-comic hover:border-primary">
+                🛠️ BUILD A CUSTOM WORKOUT
+              </button>
+              <button onClick={() => { sfx.tap(); onRegimen(); }} className="rounded-xl border-2 border-accent bg-accent/10 py-4 font-display text-2xl text-accent shadow-comic hover:bg-accent/20">
+                🤖 AI REGIMEN BUILDER
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-function TopBar({ profile, onSignOut }: { profile: { username: string }; onSignOut: () => void }) {
+function TopBar({ profile, onSignOut, onMenu }: { profile: { username: string }; onSignOut: () => void; onMenu: () => void }) {
   return (
-    <div className="flex items-center justify-between">
-      <div className="font-display text-2xl text-primary">GET RIPPED WITH KEX</div>
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => { sfx.whoosh(); onMenu(); }}
+          aria-label="Open menu"
+          className="rounded-lg border-2 border-primary bg-card px-3 py-2 font-display text-xl text-primary shadow-comic transition-transform active:scale-95"
+        >
+          ☰
+        </button>
+        <div className="font-display text-2xl text-primary">GET RIPPED WITH KEX</div>
+      </div>
       <div className="flex items-center gap-3">
         <div className="font-condensed text-sm font-black uppercase text-foreground">@{profile.username}</div>
         <button onClick={onSignOut} className="rounded-lg border-2 border-border bg-card px-3 py-1 font-condensed text-xs font-bold uppercase text-foreground hover:border-primary">Sign out</button>
@@ -860,10 +898,9 @@ function NavBtn({ label, emoji, onClick, index = 0 }: { label: string; emoji: st
 
 function StatsStrip({ stats }: { stats: ReturnType<typeof useStats> }) {
   return (
-    <div className="mt-5 grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-2 gap-3">
       <StatChip label="Streak" value={stats.streak} suffix="d" accent flame />
       <StatChip label="Workouts" value={stats.totalWorkouts} index={1} />
-      <StatChip label="Plank sec" value={stats.plankSec} index={2} />
     </div>
   );
 }
@@ -1987,4 +2024,378 @@ function MommyWorkout({ userId, onExit, onDone, onLogDay }: { userId: string; on
       </div>
     </div>
   );
+}
+
+/* =========================================================
+   SIDEBAR — navigation, stats, and the EDITOR tool
+   ========================================================= */
+function Sidebar({
+  open, onClose, profile, stats, koinBalance, shieldCount, regimenActive, go,
+}: {
+  open: boolean;
+  onClose: () => void;
+  profile: { username: string };
+  stats: ReturnType<typeof useStats>;
+  koinBalance: number;
+  shieldCount: number;
+  regimenActive: boolean;
+  go: (s: Screen) => void;
+}) {
+  const { editing, authorized, setEditing, startEditor } = useCopyCtx();
+  const [pw, setPw] = useState("");
+  const [pwErr, setPwErr] = useState<string | null>(null);
+  const [askPw, setAskPw] = useState(false);
+  const [panel, setPanel] = useState(false);
+
+  const items: { label: string; emoji: string; screen: Screen }[] = [
+    { label: "TOURNAMENTS", emoji: "🏆", screen: "tournaments" },
+    { label: "STREAK BOARD", emoji: "🔥", screen: "streaks" },
+    { label: "TROPHIES", emoji: "🏅", screen: "trophies" },
+    { label: "KOIN SHOP", emoji: "🪙", screen: "shop" },
+    { label: "AI REGIMEN", emoji: "🤖", screen: "regimen" },
+    { label: "CUSTOM", emoji: "🛠️", screen: "custom" },
+    { label: "PREFERENCES", emoji: "⚙️", screen: "prefs" },
+    { label: "MOMMY ❤️", emoji: "💗", screen: "mommy" },
+  ];
+
+  const unlock = async () => {
+    setPwErr(null);
+    try {
+      const res = await kexEditorLogin({ data: { username: "EDITOR", password: pw } });
+      startEditor(res.token);
+      sfx.editorBlip();
+      setAskPw(false);
+      setPw("");
+    } catch (e) {
+      sfx.nope();
+      setPwErr(e instanceof Error ? e.message : "Wrong password.");
+    }
+  };
+
+  return (
+    <>
+      <div
+        onClick={onClose}
+        className={`fixed inset-0 z-[80] bg-black/70 transition-opacity ${open ? "opacity-100" : "pointer-events-none opacity-0"}`}
+      />
+      <aside
+        className={`fixed left-0 top-0 z-[85] flex h-full w-[86vw] max-w-sm flex-col overflow-y-auto border-r-4 border-primary bg-card px-4 py-5 shadow-comic-lg transition-transform duration-300 ${open ? "translate-x-0" : "-translate-x-full"}`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="font-display text-3xl text-primary">KEX MENU</div>
+          <button onClick={() => { sfx.popClose(); onClose(); }} className="rounded-lg border-2 border-border px-3 py-1 font-display text-xl text-foreground">✕</button>
+        </div>
+        <div className="mt-1 font-condensed text-xs font-black uppercase tracking-widest text-muted-foreground">@{profile.username}</div>
+
+        <div className="mt-4">
+          <StatsStrip stats={stats} />
+        </div>
+
+        <button
+          onClick={() => { sfx.coin(); go("shop"); onClose(); }}
+          className="mt-3 w-full rounded-xl border-2 border-secondary bg-secondary/10 px-3 py-3 text-left font-condensed text-sm font-black uppercase text-secondary"
+        >
+          🪙 {koinBalance} KEX KOINS{shieldCount > 0 ? ` · ${shieldCount} shields` : ""}
+        </button>
+
+        <nav className="mt-4 grid grid-cols-2 gap-2">
+          {items.map((b, i) => {
+            const blocked = regimenActive && (b.screen === "custom" || b.screen === "mommy");
+            return (
+              <NavBtn
+                key={b.label}
+                label={blocked ? `${b.label} (PAUSED)` : b.label}
+                emoji={b.emoji}
+                index={i}
+                onClick={() => {
+                  if (blocked) { sfx.nope(); return; }
+                  sfx.tap();
+                  go(b.screen);
+                  onClose();
+                }}
+              />
+            );
+          })}
+        </nav>
+
+        <div className="mt-5 rounded-xl border-2 border-dashed border-secondary p-3">
+          <div className="font-condensed text-xs font-black uppercase tracking-widest text-secondary">✏️ EDITOR TOOL</div>
+          {authorized ? (
+            <>
+              <button
+                onClick={() => { sfx.editorBlip(); setEditing(!editing); }}
+                className={`mt-2 w-full rounded-xl py-3 font-display text-2xl shadow-comic ${editing ? "bg-secondary text-secondary-foreground" : "border-2 border-border bg-card text-foreground"}`}
+              >
+                EDIT MODE: {editing ? "ON" : "OFF"}
+              </button>
+              <button
+                onClick={() => { sfx.tap(); setPanel((p) => !p); }}
+                className="mt-2 w-full rounded-xl border-2 border-primary bg-primary/10 py-2 font-condensed text-xs font-black uppercase text-primary"
+              >
+                🪙 KOIN VALUE SETTINGS
+              </button>
+              {panel && <EconomyPanel />}
+            </>
+          ) : askPw ? (
+            <div className="mt-2">
+              <input
+                type="password"
+                autoFocus
+                value={pw}
+                onChange={(e) => setPw(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && unlock()}
+                placeholder="Editor password"
+                className="w-full rounded-lg border-2 border-border bg-background px-3 py-2 text-foreground"
+              />
+              {pwErr && <div className="mt-1 animate-shake font-condensed text-xs font-black uppercase text-danger">{pwErr}</div>}
+              <div className="mt-2 flex gap-2">
+                <button onClick={unlock} className="flex-1 rounded-lg bg-secondary py-2 font-display text-lg text-secondary-foreground">UNLOCK</button>
+                <button onClick={() => { setAskPw(false); setPw(""); setPwErr(null); }} className="rounded-lg border-2 border-border px-3 font-condensed text-xs font-black uppercase text-muted-foreground">CANCEL</button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => { sfx.tap(); setAskPw(true); }}
+              className="mt-2 w-full rounded-xl border-2 border-secondary py-2 font-condensed text-xs font-black uppercase text-secondary"
+            >
+              UNLOCK EDITOR TOOL
+            </button>
+          )}
+        </div>
+
+        <div className="h-16" />
+      </aside>
+    </>
+  );
+}
+
+/* Koin value sliders — editor only, shared across every device. */
+function EconomyPanel() {
+  const { token } = useCopyCtx();
+  const { econ, save, resetAll } = useKoinEconomy(token);
+  const [local, setLocal] = useState<KoinEconomy>(econ);
+  useEffect(() => setLocal(econ), [econ]);
+
+  const set = (k: keyof KoinEconomy, v: number) => setLocal((e) => ({ ...e, [k]: v }));
+  const rows: { k: keyof KoinEconomy; label: string; min: number; max: number; step: number }[] = [
+    { k: "globalMult", label: "GLOBAL MULTIPLIER", min: 0, max: 5, step: 0.1 },
+    { k: "mommy", label: "MOMMY DAY", min: 0, max: 300, step: 1 },
+    { k: "mercy", label: "MERCY PLEA", min: 0, max: 300, step: 1 },
+    { k: "streakPerDay", label: "STREAK / DAY", min: 0, max: 50, step: 1 },
+    { k: "trophyStreakFactor", label: "TROPHY: STREAK ×N", min: 0, max: 50, step: 1 },
+    { k: "trophyWorkouts", label: "TROPHY: WORKOUTS", min: 0, max: 300, step: 1 },
+    { k: "trophyDiffFactor", label: "TROPHY: DIFFICULTY ×LVL", min: 0, max: 100, step: 1 },
+    { k: "trophyTournament", label: "TROPHY: TOURNAMENT WIN", min: 0, max: 2000, step: 10 },
+    { k: "place1", label: "1ST PLACE", min: 0, max: 3000, step: 10 },
+    { k: "place2", label: "2ND PLACE", min: 0, max: 3000, step: 10 },
+    { k: "place3", label: "3RD PLACE", min: 0, max: 3000, step: 10 },
+    { k: "placeTop10", label: "TOP 10", min: 0, max: 1000, step: 5 },
+    { k: "placeRest", label: "EVERYONE ELSE", min: 0, max: 1000, step: 5 },
+    { k: "regimenJackpot", label: "AI REGIMEN JACKPOT", min: 0, max: 5000, step: 25 },
+    { k: "freezeBase", label: "FREEZE BASE PRICE", min: 0, max: 500, step: 1 },
+    { k: "freezePerStreakDay", label: "FREEZE + PER STREAK DAY", min: 0, max: 100, step: 1 },
+    { k: "restMultiplier", label: "REST DAY PRICE ×", min: 0.1, max: 2, step: 0.05 },
+    { k: "aheadDiscountPct", label: "EARLY-BIRD % / DAY", min: 0, max: 20, step: 1 },
+  ];
+
+  return (
+    <div className="mt-3 space-y-3 rounded-xl border-2 border-primary bg-background p-3">
+      <div className="font-condensed text-[10px] font-black uppercase tracking-widest text-primary">WORKOUT PAYOUT PER LEVEL</div>
+      {local.workout.map((v, i) => (
+        <label key={i} className="block">
+          <div className="flex justify-between font-condensed text-[10px] font-black uppercase text-muted-foreground">
+            <span>LEVEL {i} — {DIFFICULTIES[i]?.name}</span><span className="text-primary">{v}</span>
+          </div>
+          <input
+            type="range" min={0} max={400} step={1} value={v}
+            onChange={(e) => setLocal((x) => ({ ...x, workout: x.workout.map((y, j) => (j === i ? Number(e.target.value) : y)) }))}
+            className="w-full"
+          />
+        </label>
+      ))}
+      {rows.map((r) => (
+        <label key={r.k} className="block">
+          <div className="flex justify-between font-condensed text-[10px] font-black uppercase text-muted-foreground">
+            <span>{r.label}</span><span className="text-primary">{local[r.k] as number}</span>
+          </div>
+          <input
+            type="range" min={r.min} max={r.max} step={r.step} value={local[r.k] as number}
+            onChange={(e) => set(r.k, Number(e.target.value))}
+            className="w-full"
+          />
+        </label>
+      ))}
+      <div className="flex gap-2">
+        <button onClick={() => { sfx.coinLand(); void save(local); }} className="flex-1 rounded-lg bg-primary py-2 font-display text-lg text-primary-foreground">SAVE VALUES</button>
+        <button onClick={() => { sfx.bonk(); void resetAll(); }} className="rounded-lg border-2 border-border px-3 font-condensed text-[10px] font-black uppercase text-muted-foreground">RESET</button>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   AI REGIMEN BUILDER
+   ========================================================= */
+function RegimenScreen({
+  regimen, econ, onBack, onBuilt, onQuit, onStartDay,
+}: {
+  regimen: RegimenRow | null;
+  econ: KoinEconomy;
+  onBack: () => void;
+  onBuilt: (r: RegimenRow) => void;
+  onQuit: () => Promise<void>;
+  onStartDay: (workoutIndex: number) => void;
+}) {
+  const [days, setDays] = useState(14);
+  const [difficulty, setDifficulty] = useState<DifficultyId>(3);
+  const [perDay, setPerDay] = useState(1);
+  const [goal, setGoal] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const jackpot = regimenJackpot(regimen?.days ?? days, regimen?.difficulty ?? difficulty, econ);
+
+  if (regimen) {
+    return (
+      <div className="min-h-screen px-5 py-6 pb-24">
+        <div className="mx-auto max-w-3xl">
+          <button onClick={onBack} className="font-condensed text-sm font-bold uppercase text-muted-foreground hover:text-primary">← Home</button>
+          <h1 className="mt-2 font-display text-5xl text-primary text-stroke-black">🤖 {regimen.name}</h1>
+          {regimen.goal && <p className="mt-1 italic text-foreground/80">"{regimen.goal}"</p>}
+          <div className="mt-2 font-condensed text-xs font-black uppercase tracking-widest text-accent">
+            DAY {regimen.current_day} OF {regimen.days} · {DIFFICULTIES[regimen.difficulty]?.name} · {regimen.per_day} workout{regimen.per_day > 1 ? "s" : ""}/day
+          </div>
+          <div className="mt-3 rounded-xl border-2 border-primary bg-primary/10 p-3 font-condensed text-sm font-black uppercase text-primary">
+            🪙 FINISH THE WHOLE PLAN FOR A {jackpot} KOIN JACKPOT
+          </div>
+
+          <div className="mt-5 space-y-2">
+            {regimen.plan.map((d) => {
+              const isToday = d.day === regimen.current_day;
+              const done = d.day < regimen.current_day;
+              return (
+                <div
+                  key={d.day}
+                  style={stagger(Math.min(d.day, 12), 40)}
+                  className={`animate-fade-up rounded-xl border-2 p-3 ${isToday ? "border-primary bg-primary/10 shadow-comic" : done ? "border-border bg-card opacity-60" : "border-border bg-card"}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="font-display text-xl text-foreground">
+                      {done ? "✅ " : isToday ? "▶ " : ""}DAY {d.day} — {d.title}
+                    </div>
+                    <div className="font-condensed text-[10px] font-black uppercase text-muted-foreground">
+                      {d.kind === "rest" ? "REST" : `${d.workouts.length} session${d.workouts.length > 1 ? "s" : ""}`}
+                    </div>
+                  </div>
+                  {d.note && <div className="mt-1 text-sm text-muted-foreground">{d.note}</div>}
+                  {isToday && d.kind === "workout" && (
+                    <div className="mt-2 space-y-2">
+                      {d.workouts.map((w, i) => (
+                        <button
+                          key={`${w.name}-${i}`}
+                          onClick={() => { sfx.bigTap(); onStartDay(i); }}
+                          className="w-full rounded-lg bg-primary py-3 font-display text-xl text-primary-foreground shadow-comic"
+                        >
+                          START {w.name} ({w.exerciseIds.length} exercises)
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            onClick={async () => { sfx.quit(); await onQuit(); }}
+            className="mt-6 w-full rounded-xl border-2 border-danger bg-danger/10 py-3 font-condensed text-sm font-black uppercase text-danger"
+          >
+            QUIT THIS REGIMEN (no jackpot)
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen px-5 py-6 pb-24">
+      <div className="mx-auto max-w-2xl">
+        <button onClick={onBack} className="font-condensed text-sm font-bold uppercase text-muted-foreground hover:text-primary">← Home</button>
+        <h1 className="mt-2 font-display text-5xl text-primary text-stroke-black">🤖 AI REGIMEN BUILDER</h1>
+        <p className="mt-1 text-foreground/80">
+          Tell Kex's AI coach your goal and it builds you a day-by-day plan out of real Kex exercises. While a regimen runs, everything else pauses.
+        </p>
+
+        <div className="mt-5 space-y-5 rounded-2xl border-4 border-accent bg-card p-5 shadow-comic-lg">
+          <label className="block">
+            <div className="flex justify-between font-condensed text-xs font-black uppercase text-secondary">
+              <span>HOW MANY DAYS</span><span className="text-primary">{days}</span>
+            </div>
+            <input type="range" min={1} max={60} value={days} onChange={(e) => setDays(Number(e.target.value))} className="mt-1 w-full" />
+          </label>
+
+          <label className="block">
+            <div className="flex justify-between font-condensed text-xs font-black uppercase text-secondary">
+              <span>WORKOUTS PER DAY</span><span className="text-primary">{perDay}</span>
+            </div>
+            <input type="range" min={1} max={3} value={perDay} onChange={(e) => setPerDay(Number(e.target.value))} className="mt-1 w-full" />
+          </label>
+
+          <div>
+            <div className="font-condensed text-xs font-black uppercase text-secondary">DIFFICULTY</div>
+            <select
+              value={difficulty}
+              onChange={(e) => setDifficulty(Number(e.target.value) as DifficultyId)}
+              className="mt-1 w-full rounded-lg border-2 border-border bg-background p-3 font-display text-lg text-foreground"
+            >
+              {DIFFICULTIES.map((d) => <option key={d.id} value={d.id}>Level {d.id}: {d.name}</option>)}
+            </select>
+          </div>
+
+          <label className="block">
+            <div className="font-condensed text-xs font-black uppercase text-secondary">WHAT'S THE GOAL?</div>
+            <textarea
+              rows={3}
+              value={goal}
+              onChange={(e) => setGoal(e.target.value)}
+              maxLength={600}
+              placeholder="e.g. I want a six pack by the end of the month / soccer tournament in a week / 12 minute 2 mile in 3 weeks"
+              className="mt-1 w-full rounded-lg border-2 border-border bg-background p-3 text-foreground"
+            />
+          </label>
+
+          <div className="rounded-xl border-2 border-primary bg-primary/10 p-3 font-condensed text-xs font-black uppercase text-primary">
+            🪙 JACKPOT IF YOU FINISH: {regimenJackpot(days, difficulty, econ)} KOINS
+          </div>
+
+          {err && <div className="animate-shake rounded-lg border-2 border-danger bg-danger/10 p-3 text-sm text-danger">{err}</div>}
+
+          <button
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true); setErr(null);
+              sfx.smash();
+              try {
+                const res = await kexBuildRegimen({ data: { days, difficulty, perDay, goal } });
+                if (res.ok) { sfx.fanfare(); onBuilt(res.regimen); }
+                else { sfx.nope(); setErr(res.error); }
+              } catch (e) {
+                sfx.nope();
+                setErr(e instanceof Error ? e.message : "Could not build the regimen.");
+              } finally { setBusy(false); }
+            }}
+            className="w-full rounded-2xl bg-primary py-5 font-display text-3xl text-primary-foreground shadow-comic-lg disabled:opacity-50"
+          >
+            {busy ? "KEX IS THINKING…" : "BUILD MY REGIMEN"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Jackpot scales with length and difficulty. */
+function regimenJackpot(days: number, difficulty: number, econ: KoinEconomy): number {
+  const base = econ.regimenJackpot * (days / 14) * ((difficulty + 1) / 4);
+  return Math.max(0, Math.round(base * econ.globalMult));
 }

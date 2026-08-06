@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { kexSaveCopy, kexResetCopy } from "./kex-copy.functions";
 
 const EDITOR_TOKEN_KEY = "kex-editor-token";
+const EDITOR_ON_KEY = "kex-editor-on";
 
 export type KexStyle = {
   color?: string;
@@ -19,8 +20,12 @@ export type KexStyle = {
 type CopyCtx = {
   map: Record<string, string>;
   styles: Record<string, KexStyle>;
+  /** Edit mode is ON: taps rewrite text instead of interacting. */
   editing: boolean;
+  /** The editor password has been accepted (tool unlocked). */
+  authorized: boolean;
   token: string | null;
+  setEditing: (on: boolean) => void;
   save: (key: string, value: string, style?: KexStyle) => Promise<void>;
   reset: (key: string) => Promise<void>;
   startEditor: (token: string) => void;
@@ -91,10 +96,12 @@ export function CopyProvider({ children }: { children: ReactNode }) {
   const [map, setMap] = useState<Record<string, string>>({});
   const [styles, setStyles] = useState<Record<string, KexStyle>>({});
   const [token, setToken] = useState<string | null>(null);
+  const [enabled, setEnabled] = useState(false);
   const applying = useRef(false);
 
   useEffect(() => {
     setToken(getStoredEditorToken());
+    try { setEnabled(localStorage.getItem(EDITOR_ON_KEY) === "1"); } catch {}
     supabase.from("app_copy").select("key, value, style").then(({ data }) => {
       if (!data) return;
       const nextText: Record<string, string> = {};
@@ -164,17 +171,24 @@ export function CopyProvider({ children }: { children: ReactNode }) {
   }, [token]);
 
   const startEditor = useCallback((t: string) => {
-    try { localStorage.setItem(EDITOR_TOKEN_KEY, t); } catch {}
+    try { localStorage.setItem(EDITOR_TOKEN_KEY, t); localStorage.setItem(EDITOR_ON_KEY, "1"); } catch {}
     setToken(t);
+    setEnabled(true);
   }, []);
   const stopEditor = useCallback(() => {
-    try { localStorage.removeItem(EDITOR_TOKEN_KEY); } catch {}
+    try { localStorage.removeItem(EDITOR_TOKEN_KEY); localStorage.removeItem(EDITOR_ON_KEY); } catch {}
     setToken(null);
+    setEnabled(false);
+  }, []);
+  const setEditing = useCallback((on: boolean) => {
+    setEnabled(on);
+    try { localStorage.setItem(EDITOR_ON_KEY, on ? "1" : "0"); } catch {}
   }, []);
 
   const value = useMemo<CopyCtx>(() => ({
-    map, styles, editing: !!token, token, save, reset, startEditor, stopEditor,
-  }), [map, styles, token, save, reset, startEditor, stopEditor]);
+    map, styles, editing: !!token && enabled, authorized: !!token, token,
+    setEditing, save, reset, startEditor, stopEditor,
+  }), [map, styles, token, enabled, setEditing, save, reset, startEditor, stopEditor]);
 
   return (
     <Ctx.Provider value={value}>
@@ -222,25 +236,22 @@ type Target = { key: string; node: Text; el: HTMLElement; original: string };
 function UniversalEditor() {
   const { editing, map, styles, save, reset } = useCopyCtx();
   const [target, setTarget] = useState<Target | null>(null);
-  const [pending, setPending] = useState<{ el: HTMLElement; ev: MouseEvent } | null>(null);
   const [lines, setLines] = useState<Text[] | null>(null);
   const [draft, setDraft] = useState("");
   const [style, setStyle] = useState<KexStyle>({});
   const [busy, setBusy] = useState(false);
-  const bypass = useRef(false);
 
   useEffect(() => {
     if (!editing || typeof document === "undefined") return;
     const onClick = (ev: MouseEvent) => {
-      if (bypass.current) return;
       const el = ev.target as HTMLElement | null;
       if (!el || el.closest("[data-kex-editor]")) return;
       if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT") return;
       ev.preventDefault();
       ev.stopPropagation();
+      // Edit mode ON = everything is text to rewrite. Toggle it off to interact.
       const pressable = el.closest("button,a,[role='button']") as HTMLElement | null;
-      if (pressable) { setPending({ el: pressable, ev }); return; }
-      openFor(el);
+      openFor(pressable ?? el);
     };
     document.addEventListener("click", onClick, true);
     return () => document.removeEventListener("click", onClick, true);
@@ -265,45 +276,22 @@ function UniversalEditor() {
     setTarget({ key, node, el: node.parentElement ?? fallbackEl ?? document.body, original });
     setDraft(map[key] ?? node.nodeValue ?? original);
     setStyle(styles[key] ?? {});
-    setPending(null);
     setLines(null);
   };
 
   const openFor = (el: HTMLElement) => {
     const found = textLines(el);
     if (found.length === 0) return;
-    setPending(null);
     // Several lines of text in one element (e.g. a multi-line button): let the
     // editor pick which line to work on. Each line keeps its own override.
     if (found.length > 1) { setLines(found); return; }
     editNode(found[0], el);
   };
 
-  const interact = () => {
-    const el = pending?.el;
-    setPending(null);
-    if (!el) return;
-    bypass.current = true;
-    el.click();
-    setTimeout(() => { bypass.current = false; }, 0);
-  };
-
-
   if (!editing) return null;
 
   return (
     <div data-kex-editor="1">
-      {pending && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-5" onClick={() => setPending(null)}>
-          <div className="w-full max-w-xs rounded-2xl border-4 border-secondary bg-card p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="font-condensed text-xs font-black uppercase tracking-widest text-secondary">Pressable</div>
-            <button onClick={interact} className="mt-3 w-full rounded-xl bg-primary py-3 font-display text-2xl text-primary-foreground">▶ INTERACT</button>
-            <button onClick={() => openFor(pending.el)} className="mt-2 w-full rounded-xl bg-secondary py-3 font-display text-2xl text-secondary-foreground">✏️ EDIT</button>
-            <button onClick={() => setPending(null)} className="mt-2 w-full font-condensed text-xs font-black uppercase text-muted-foreground">CANCEL</button>
-          </div>
-        </div>
-      )}
-
       {lines && (
         <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/70 p-4" onClick={() => setLines(null)}>
           <div className="max-h-[80vh] w-full max-w-sm overflow-y-auto rounded-2xl border-4 border-secondary bg-card p-4" onClick={(e) => e.stopPropagation()}>
@@ -423,12 +411,12 @@ function Toggle({ on, label, onClick }: { on: boolean; label: string; onClick: (
 
 /** Floating banner shown while the editor is active. */
 export function EditorBar() {
-  const { editing, stopEditor } = useCopyCtx();
+  const { editing, setEditing } = useCopyCtx();
   if (!editing) return null;
   return (
     <div data-kex-editor="1" className="fixed bottom-0 left-0 right-0 z-[90] flex items-center justify-between gap-3 border-t-4 border-secondary bg-secondary/95 px-4 py-2 text-secondary-foreground">
       <div className="font-condensed text-xs font-black uppercase tracking-widest">✏️ EDITOR MODE — tap ANY text to rewrite or restyle it</div>
-      <button onClick={stopEditor} className="rounded-lg border-2 border-secondary-foreground px-3 py-1 font-condensed text-xs font-black uppercase">EXIT EDITOR</button>
+      <button onClick={() => setEditing(false)} className="rounded-lg border-2 border-secondary-foreground px-3 py-1 font-condensed text-xs font-black uppercase">EDIT MODE OFF</button>
     </div>
   );
 }

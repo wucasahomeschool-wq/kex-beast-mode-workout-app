@@ -53,6 +53,60 @@ export type Database = {
         }
         Relationships: []
       }
+      regimens: {
+        Row: {
+          active: boolean
+          completed_days: Json
+          created_at: string
+          current_day: number
+          days: number
+          difficulty: number
+          finished: boolean
+          goal: string
+          id: string
+          jackpot_paid: boolean
+          name: string
+          per_day: number
+          plan: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          completed_days?: Json
+          created_at?: string
+          current_day?: number
+          days?: number
+          difficulty?: number
+          finished?: boolean
+          goal?: string
+          id?: string
+          jackpot_paid?: boolean
+          name: string
+          per_day?: number
+          plan?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          completed_days?: Json
+          created_at?: string
+          current_day?: number
+          days?: number
+          difficulty?: number
+          finished?: boolean
+          goal?: string
+          id?: string
+          jackpot_paid?: boolean
+          name?: string
+          per_day?: number
+          plan?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       streak_shields: {
         Row: {
           cost: number

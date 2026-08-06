@@ -33,6 +33,8 @@ export type KoinEconomy = {
   freezePerStreakDay: number;
   restMultiplier: number;       // rest day price = freeze price * this
   aheadDiscountPct: number;     // % off per day bought ahead
+  /** Jackpot for finishing a whole AI regimen (scaled by length & difficulty). */
+  regimenJackpot: number;
 };
 
 export const DEFAULT_ECONOMY: KoinEconomy = {
@@ -54,6 +56,7 @@ export const DEFAULT_ECONOMY: KoinEconomy = {
   freezePerStreakDay: 6,
   restMultiplier: 0.55,
   aheadDiscountPct: 3,
+  regimenJackpot: 600,
 };
 
 export function normalizeEconomy(raw: unknown): KoinEconomy {
@@ -81,6 +84,7 @@ export function normalizeEconomy(raw: unknown): KoinEconomy {
     freezePerStreakDay: num(r.freezePerStreakDay, DEFAULT_ECONOMY.freezePerStreakDay),
     restMultiplier: num(r.restMultiplier, DEFAULT_ECONOMY.restMultiplier),
     aheadDiscountPct: num(r.aheadDiscountPct, DEFAULT_ECONOMY.aheadDiscountPct),
+    regimenJackpot: num(r.regimenJackpot, DEFAULT_ECONOMY.regimenJackpot),
   };
 }
 

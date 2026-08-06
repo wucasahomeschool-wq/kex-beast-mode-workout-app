@@ -50,7 +50,49 @@ function audio(): AudioContext | null {
 }
 
 /** Call once from a real user gesture so mobile browsers allow audio. */
-export function unlockAudio() { audio(); }
+export function unlockAudio() {
+  const c = audio();
+  if (!c) return;
+  if (c.state === "suspended") void c.resume();
+  // iOS needs an actual sound played inside the gesture before it trusts the context.
+  try {
+    const b = c.createBuffer(1, 1, c.sampleRate);
+    const src = c.createBufferSource();
+    src.buffer = b;
+    src.connect(c.destination);
+    src.start(0);
+  } catch {}
+}
+
+/**
+ * Mobile browsers block audio until a real touch, and suspend the context when the
+ * app is backgrounded. Install once at boot: unlocks on the first real gesture and
+ * resumes whenever the app comes back to the foreground.
+ */
+export function installAudioUnlock() {
+  if (typeof window === "undefined") return;
+  const w = window as unknown as { __kexAudioUnlockInstalled?: boolean };
+  if (w.__kexAudioUnlockInstalled) return;
+  w.__kexAudioUnlockInstalled = true;
+
+  const kick = () => {
+    unlockAudio();
+    if (ctx && ctx.state === "running") {
+      events.forEach((e) => window.removeEventListener(e, kick, true));
+    }
+  };
+  const events = ["pointerdown", "touchstart", "touchend", "mousedown", "keydown", "click"] as const;
+  events.forEach((e) => window.addEventListener(e, kick, true));
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && ctx && ctx.state === "suspended") void ctx.resume();
+  });
+}
+
+/** True when this device can actually vibrate (iOS Safari cannot). */
+export function hapticsSupported(): boolean {
+  return typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
+}
 
 type ToneOpts = {
   freq: number;

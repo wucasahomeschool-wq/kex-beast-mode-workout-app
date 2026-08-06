@@ -44,7 +44,6 @@ import {
   type RegimenRow,
 } from "@/lib/kex-regimen.functions";
 import { DEFAULT_ECONOMY, useKoinEconomy, type KoinEconomy } from "@/lib/kex-koin-economy";
-import { kexBuildRegimen, kexActiveRegimen, kexQuitRegimen, type RegimenRow } from "@/lib/kex-regimen.functions";
 import {
   CoinFlight, Confetti, CountUp, ImpactBurst, TimerRing, PetalBurst,
 } from "@/components/kex-fx";
@@ -134,7 +133,7 @@ function App() {
   useEffect(() => {
     if (!userId) { setRegimen(null); return; }
     let cancelled = false;
-    kexActiveRegimen().then((r) => { if (!cancelled) setRegimen(r); }).catch(() => {});
+    kexGetRegimen().then((r: RegimenRow | null) => { if (!cancelled) setRegimen(r); }).catch(() => {});
     return () => { cancelled = true; };
   }, [userId, refreshKey]);
   const loggingRef = useRef(false);
@@ -252,7 +251,7 @@ function App() {
     if (!w) return;
     const ids = w.exerciseIds.filter((id) => !excluded.includes(id));
     setSession({
-      category: "regimen", difficulty: regimen.difficulty as DifficultyId, routineName: w.name,
+      category: "custom", difficulty: regimen.difficulty as DifficultyId, routineName: w.name,
       flavor: regimen.name, isCustom: false, items: buildItems(ids.length >= 3 ? ids : w.exerciseIds, regimen.difficulty as DifficultyId),
     });
     setScreen("workout");
@@ -384,7 +383,7 @@ function App() {
           econ={econ}
           onBack={() => setScreen("home")}
           onBuilt={(r) => { setRegimen(r); setScreen("home"); }}
-          onQuit={async () => { await kexQuitRegimen(); setRegimen(null); setScreen("home"); }}
+          onQuit={async () => { if (regimen) await kexQuitRegimen({ data: { id: regimen.id } }); setRegimen(null); setScreen("home"); }}
           onStartDay={startRegimenDay}
         />
       )}

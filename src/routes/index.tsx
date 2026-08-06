@@ -700,101 +700,123 @@ function FeatureTour({ onDone }: { onDone: () => void }) {
    HOME
    ========================================================= */
 function Home({
-  profile, stats, koinBalance, shieldCount, onStart, onCustom, onTournaments, onTrophies, onPrefs, onMommy, onShop, onStreaks, onSignOut,
+  profile, onStart, onCustom, onMenu, onSignOut, regimen, onRegimen, onStartRegimenDay,
 }: {
   profile: { username: string };
-  stats: ReturnType<typeof useStats>;
-  koinBalance: number;
-  shieldCount: number;
   onStart: (c: Category, d: DifficultyId) => void;
   onCustom: () => void;
-  onTournaments: () => void;
-  onTrophies: () => void;
-  onPrefs: () => void;
-  onMommy: () => void;
-  onShop: () => void;
-  onStreaks: () => void;
+  onMenu: () => void;
   onSignOut: () => void;
+  regimen: RegimenRow | null;
+  onRegimen: () => void;
+  onStartRegimenDay: (workoutIndex: number) => void;
 }) {
   const [category, setCategory] = useState<Category>("core");
   const [difficulty, setDifficulty] = useState<DifficultyId>(3);
   const [smashing, smash] = useFlash(600);
+  const locked = !!regimen;
+  const today = regimen?.plan?.[Math.min(regimen.current_day, regimen.days) - 1];
+
   return (
     <div className="relative min-h-screen px-5 py-6">
       <div className="mx-auto max-w-5xl">
-        <TopBar profile={profile} onSignOut={onSignOut} />
+        <TopBar profile={profile} onSignOut={onSignOut} onMenu={onMenu} />
 
-        <div className="mt-3">
-          <button
-            onClick={onShop}
-            className="w-full rounded-xl border-2 border-secondary bg-secondary/10 px-4 py-3 text-left font-condensed text-sm font-black uppercase text-secondary shadow-comic transition hover:bg-secondary/20"
-          >
-            🪙 <T k="home.shopBtn">KEX KOINS</T>: {koinBalance} · <T k="home.shopBtn2">BUY A STREAK FREEZE OR REST DAY</T>{shieldCount > 0 ? ` · ${shieldCount} owned` : ""}
-          </button>
-        </div>
+        {locked ? (
+          <div className="mt-6 rounded-2xl border-4 border-accent bg-card p-5 shadow-comic-lg">
+            <div className="font-condensed text-xs font-black uppercase tracking-widest text-accent">
+              AI REGIMEN ACTIVE · DAY {regimen!.current_day} OF {regimen!.days}
+            </div>
+            <h2 className="mt-1 font-display text-4xl text-primary text-stroke-black">{regimen!.name}</h2>
+            {regimen!.goal && <p className="mt-1 italic text-foreground/80">"{regimen!.goal}"</p>}
+            <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-full bg-accent transition-all" style={{ width: `${((regimen!.current_day - 1) / regimen!.days) * 100}%` }} />
+            </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-          {[
-            { label: "TOURNAMENTS", emoji: "🏆", onClick: onTournaments },
-            { label: "STREAK BOARD", emoji: "🔥", onClick: onStreaks },
-            { label: "TROPHIES", emoji: "🏅", onClick: onTrophies },
-            { label: "KOIN SHOP", emoji: "🪙", onClick: onShop },
-            { label: "CUSTOM", emoji: "🛠️", onClick: onCustom },
-            { label: "PREFERENCES", emoji: "⚙️", onClick: onPrefs },
-            { label: "MOMMY ❤️", emoji: "💗", onClick: onMommy },
-          ].map((b, i) => (
-            <NavBtn key={b.label} label={b.label} emoji={b.emoji} onClick={b.onClick} index={i} />
-          ))}
-        </div>
-
-
-        <StatsStrip stats={stats} />
-
-        <h2 className="mt-8 font-display text-5xl md:text-6xl text-foreground">
-          <T k="home.pickHeading">Pick your poison.</T>
-        </h2>
-
-        <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-          <CategoryCard title="CORE" subtitle="The main event" emoji="🔥" img={CATEGORY_IMG.core} selected={category === "core"} onSelect={() => setCategory("core")} badge="★ MAIN" index={0} />
-          <CategoryCard title="UPPER" subtitle="Side quest" emoji="💪" img={CATEGORY_IMG.upper} selected={category === "upper"} onSelect={() => setCategory("upper")} index={1} />
-          <CategoryCard title="LEGS" subtitle="Do not skip" emoji="🦵" img={CATEGORY_IMG.legs} selected={category === "legs"} onSelect={() => setCategory("legs")} index={2} />
-          <CategoryCard title="CARDIO" subtitle="Treadmill terror" emoji="🏃" img={CATEGORY_IMG.cardio} selected={category === "cardio"} onSelect={() => setCategory("cardio")} index={3} />
-          <CategoryCard title="SOCCER" subtitle="Garage drills" emoji="⚽" img={CATEGORY_IMG.soccer} selected={category === "soccer"} onSelect={() => setCategory("soccer")} index={4} />
-        </div>
-
-
-        <h3 className="mt-10 font-display text-4xl text-foreground">
-          How much <span className="text-primary">Kex</span> can you handle?
-        </h3>
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {DIFFICULTIES.map((d) => (
-            <button
-              key={d.id}
-              onClick={() => setDifficulty(d.id)}
-              className={`relative overflow-hidden rounded-xl border-2 p-4 text-left transition-transform hover:scale-[1.02] ${difficulty === d.id ? "border-primary shadow-comic-pink" : "border-border bg-card"}`}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className={`inline-block rounded px-2 py-0.5 font-condensed text-xs font-black uppercase ${d.color}`}>Level {d.id}</div>
-                  <div className="mt-1 font-display text-2xl leading-none text-foreground">{d.name}</div>
-                  <div className="mt-1 text-sm text-muted-foreground">{d.tag}</div>
-                </div>
-                <div className="font-display text-3xl text-primary">{"★".repeat(d.id + 1)}</div>
+            {today?.kind === "rest" ? (
+              <div className="mt-4">
+                <div className="font-display text-3xl text-foreground">😴 {today.title}</div>
+                <p className="mt-1 text-foreground/80">{today.note}</p>
               </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {(today?.workouts ?? []).map((w, i) => (
+                  <button
+                    key={`${w.name}-${i}`}
+                    onClick={() => { sfx.bigTap(); onStartRegimenDay(i); }}
+                    style={stagger(i)}
+                    className="animate-fade-up w-full rounded-xl border-2 border-primary bg-primary/10 p-4 text-left transition-transform hover:scale-[1.01]"
+                  >
+                    <div className="font-display text-2xl text-primary">▶ {w.name}</div>
+                    <div className="font-condensed text-xs uppercase text-muted-foreground">{w.exerciseIds.length} exercises</div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <button onClick={() => { sfx.tap(); onRegimen(); }} className="mt-4 w-full rounded-xl border-2 border-border bg-card py-3 font-condensed text-sm font-black uppercase text-foreground">
+              VIEW THE WHOLE PLAN
             </button>
-          ))}
-        </div>
+            <p className="mt-2 text-center font-condensed text-[11px] uppercase text-muted-foreground">
+              Other courses are paused while a regimen is running.
+            </p>
+          </div>
+        ) : (
+          <>
+            <h2 className="mt-8 font-display text-5xl md:text-6xl text-foreground">
+              <T k="home.pickHeading">Pick your poison.</T>
+            </h2>
 
-        <div className="relative mt-8 flex justify-center pb-16">
-          {smashing && <ImpactBurst />}
-          <button
-            onClick={() => { smash(); onStart(category, difficulty); }}
-            className={`relative z-10 rotate-[-1deg] rounded-2xl bg-primary px-10 py-5 font-display text-4xl text-primary-foreground shadow-comic-lg transition-transform hover:rotate-0 hover:scale-105 active:translate-x-1 active:translate-y-1 ${smashing ? "animate-stamp" : "animate-breathe"}`}
-          >
-            START WORKOUT
-          </button>
-        </div>
+            <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-5">
+              <CategoryCard title="CORE" subtitle="The main event" emoji="🔥" img={CATEGORY_IMG.core} selected={category === "core"} onSelect={() => { sfx.tap(); setCategory("core"); }} badge="★ MAIN" index={0} />
+              <CategoryCard title="UPPER" subtitle="Side quest" emoji="💪" img={CATEGORY_IMG.upper} selected={category === "upper"} onSelect={() => { sfx.tap(); setCategory("upper"); }} index={1} />
+              <CategoryCard title="LEGS" subtitle="Do not skip" emoji="🦵" img={CATEGORY_IMG.legs} selected={category === "legs"} onSelect={() => { sfx.tap(); setCategory("legs"); }} index={2} />
+              <CategoryCard title="CARDIO" subtitle="Treadmill terror" emoji="🏃" img={CATEGORY_IMG.cardio} selected={category === "cardio"} onSelect={() => { sfx.tap(); setCategory("cardio"); }} index={3} />
+              <CategoryCard title="SOCCER" subtitle="Garage drills" emoji="⚽" img={CATEGORY_IMG.soccer} selected={category === "soccer"} onSelect={() => { sfx.tap(); setCategory("soccer"); }} index={4} />
+            </div>
 
+            <h3 className="mt-10 font-display text-4xl text-foreground">
+              How much <span className="text-primary">Kex</span> can you handle?
+            </h3>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {DIFFICULTIES.map((d) => (
+                <button
+                  key={d.id}
+                  onClick={() => { sfx.notch(); setDifficulty(d.id); }}
+                  className={`relative overflow-hidden rounded-xl border-2 p-4 text-left transition-transform hover:scale-[1.02] ${difficulty === d.id ? "border-primary shadow-comic-pink" : "border-border bg-card"}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className={`inline-block rounded px-2 py-0.5 font-condensed text-xs font-black uppercase ${d.color}`}>Level {d.id}</div>
+                      <div className="mt-1 font-display text-2xl leading-none text-foreground">{d.name}</div>
+                      <div className="mt-1 text-sm text-muted-foreground">{d.tag}</div>
+                    </div>
+                    <div className="font-display text-3xl text-primary">{"★".repeat(d.id + 1)}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="relative mt-8 flex justify-center">
+              {smashing && <ImpactBurst />}
+              <button
+                onClick={() => { sfx.smash(); smash(); onStart(category, difficulty); }}
+                className={`relative z-10 rotate-[-1deg] rounded-2xl bg-primary px-10 py-5 font-display text-4xl text-primary-foreground shadow-comic-lg transition-transform hover:rotate-0 hover:scale-105 active:translate-x-1 active:translate-y-1 ${smashing ? "animate-stamp" : "animate-breathe"}`}
+              >
+                START WORKOUT
+              </button>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-3 pb-20 sm:grid-cols-2">
+              <button onClick={() => { sfx.tap(); onCustom(); }} className="rounded-xl border-2 border-border bg-card py-4 font-display text-2xl text-foreground shadow-comic hover:border-primary">
+                🛠️ BUILD A CUSTOM WORKOUT
+              </button>
+              <button onClick={() => { sfx.tap(); onRegimen(); }} className="rounded-xl border-2 border-accent bg-accent/10 py-4 font-display text-2xl text-accent shadow-comic hover:bg-accent/20">
+                🤖 AI REGIMEN BUILDER
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

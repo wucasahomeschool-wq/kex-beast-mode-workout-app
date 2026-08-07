@@ -1398,17 +1398,19 @@ function Workout({ session, onExit, onFinish }: { session: Session; onExit: () =
           </div>
         )}
 
-        <div className={`mt-6 grid grid-cols-1 gap-6 md:grid-cols-[1fr_1.2fr] ${phase === "ready" ? "opacity-40" : ""}`}>
-          <div className="relative animate-fade-up">
-            <img src={trainerImg} alt="Kex demonstrating" className="w-full rounded-2xl border-4 border-primary shadow-comic-lg" />
-            <div className="absolute -bottom-4 -right-4 rotate-[-4deg] rounded-lg bg-secondary px-4 py-3 font-display text-xl text-secondary-foreground shadow-comic">WATCH & LEARN</div>
-            {ex.needsPullupBar && (
-              <div className="absolute -top-3 -left-3 rotate-[-6deg] rounded-lg bg-accent px-3 py-2 font-condensed text-xs font-black uppercase text-accent-foreground shadow-comic">🪝 Pull-up bar</div>
-            )}
-            {ex.outdoorOnly && (
-              <div className="absolute -top-3 -left-3 rotate-[-6deg] rounded-lg bg-danger px-3 py-2 font-condensed text-xs font-black uppercase text-white shadow-comic">☀️ OUTDOOR</div>
-            )}
+        <div className={`mt-4 grid grid-cols-1 gap-4 ${phase === "ready" ? "opacity-40" : ""}`}>
+          <div className="flex animate-fade-up items-center gap-3">
+            <img src={trainerImg} alt="Kex demonstrating" className="h-20 w-20 shrink-0 rounded-xl border-2 border-primary object-cover shadow-comic" />
+            <div className="flex min-w-0 flex-wrap gap-2">
+              {ex.needsPullupBar && (
+                <span className="rounded-lg bg-accent px-2 py-1 font-condensed text-xs font-black uppercase text-accent-foreground shadow-comic">🪝 Pull-up bar</span>
+              )}
+              {ex.outdoorOnly && (
+                <span className="rounded-lg bg-danger px-2 py-1 font-condensed text-xs font-black uppercase text-white shadow-comic">☀️ Outdoor</span>
+              )}
+            </div>
           </div>
+
 
           <div key={idx} className="animate-pop-in">
             <div className="font-condensed text-sm font-black uppercase tracking-widest text-secondary">Exercise {idx + 1}</div>

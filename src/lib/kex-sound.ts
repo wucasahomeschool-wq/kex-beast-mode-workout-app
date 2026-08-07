@@ -1,7 +1,12 @@
-// Kex sound FX + haptics. Everything is synthesized with WebAudio — no asset files,
-// works offline, instant. One AudioContext, unlocked on the first user gesture.
+// Kex sound FX + haptics. Synthesized WebAudio layers plus a real recorded
+// sprite library (one mp3, timestamp-mapped). One AudioContext, unlocked on the
+// first user gesture.
+import spriteAsset from "@/assets/kex-sfx-sprite.mp3.asset.json";
+
+const SPRITE_URL = spriteAsset.url;
 
 export type SoundPrefs = { sound: boolean; haptics: boolean; volume: number };
+
 
 const PREF_KEY = "kex-sound-prefs";
 const DEFAULTS: SoundPrefs = { sound: true, haptics: true, volume: 0.7 };
@@ -77,6 +82,7 @@ export function installAudioUnlock() {
 
   const kick = () => {
     unlockAudio();
+    void loadSprite();
     if (ctx && ctx.state === "running") {
       events.forEach((e) => window.removeEventListener(e, kick, true));
     }
@@ -93,6 +99,62 @@ export function installAudioUnlock() {
 export function hapticsSupported(): boolean {
   return typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
 }
+
+/* ---------------- real recorded sprite library ---------------- */
+
+/** [startSeconds, durationSeconds] inside the master sprite file. */
+export const SPRITE: Record<string, [number, number]> = {
+  success_1: [0.0, 1.0],
+  finish_workout: [1.5, 3.5],
+  "cha-ching": [6.0, 2.0],
+  dun_dun_duuunnn: [9.0, 2.0],
+  double_pop: [12.0, 0.25],
+  swipe: [13.5, 0.25],
+  glass_breaking: [15.0, 2.0],
+  countdown_321: [16.5, 3.0],
+  cannon: [21.0, 2.0],
+  success_2: [24.0, 1.0],
+  coins_falling: [25.5, 0.25],
+  error: [27.0, 2.0],
+  start_workout: [29.0, 3.0],
+};
+export type ClipName = keyof typeof SPRITE;
+
+let spriteBuf: AudioBuffer | null = null;
+let spriteLoading: Promise<void> | null = null;
+
+function loadSprite(): Promise<void> {
+  const c = audio();
+  if (!c || spriteBuf) return Promise.resolve();
+  if (spriteLoading) return spriteLoading;
+  spriteLoading = fetch(SPRITE_URL)
+    .then((r) => r.arrayBuffer())
+    .then((ab) => new Promise<void>((res) => {
+      c.decodeAudioData(
+        ab,
+        (buf) => { spriteBuf = buf; res(); },
+        () => res(),
+      );
+    }))
+    .catch(() => {});
+  return spriteLoading;
+}
+
+/** Play one clip out of the recorded sprite. No-op until the file is decoded. */
+export function playClip(name: ClipName, gain = 1) {
+  const c = audio();
+  if (!c || !master) return;
+  if (!spriteBuf) { void loadSprite(); return; }
+  const span = SPRITE[name];
+  if (!span) return;
+  const src = c.createBufferSource();
+  src.buffer = spriteBuf;
+  const g = c.createGain();
+  g.gain.value = gain;
+  src.connect(g).connect(master);
+  try { src.start(c.currentTime, span[0], span[1]); } catch {}
+}
+
 
 type ToneOpts = {
   freq: number;
@@ -156,19 +218,24 @@ export function haptic(pattern: number | number[]) {
 let humStop: (() => void) | null = null;
 
 export const sfx = {
+  /* recorded-library cues */
+  countdown321() { playClip("countdown_321"); haptic([20, 700, 20, 700, 20]); },
+  dramatic() { playClip("dun_dun_duuunnn"); haptic([40, 80, 40, 80, 120]); },
+  bigWin() { playClip("cannon", 0.9); },
   /* UI */
   tap() { tone({ freq: 620, to: 900, dur: 0.05, type: "square", gain: 0.09 }); haptic(10); },
   bigTap() { tone({ freq: 150, to: 90, dur: 0.14, type: "sine", gain: 0.3 }); tone({ freq: 500, to: 900, dur: 0.1, type: "triangle", gain: 0.12, delay: 0.03 }); haptic(20); },
-  bonk() { tone({ freq: 120, to: 70, dur: 0.18, type: "sawtooth", gain: 0.2 }); haptic([15, 40, 15]); },
-  whoosh() { noise(0.24, 0.13, 0, 700); },
-  swipe() { noise(0.16, 0.1, 0, 900); haptic(8); },
+  bonk() { playClip("error", 0.5); tone({ freq: 120, to: 70, dur: 0.18, type: "sawtooth", gain: 0.2 }); haptic([15, 40, 15]); },
+  whoosh() { playClip("swipe", 0.8); noise(0.24, 0.13, 0, 700); },
+  swipe() { playClip("swipe"); noise(0.16, 0.1, 0, 900); haptic(8); },
   ding() { tone({ freq: 1180, dur: 0.16, type: "sine", gain: 0.16 }); },
-  popOpen() { tone({ freq: 380, to: 780, dur: 0.1, type: "sine", gain: 0.16 }); },
+  popOpen() { playClip("double_pop", 0.8); tone({ freq: 380, to: 780, dur: 0.1, type: "sine", gain: 0.16 }); },
   popClose() { tone({ freq: 780, to: 340, dur: 0.1, type: "sine", gain: 0.14 }); },
   blip() { tone({ freq: 900, to: 1400, dur: 0.06, type: "square", gain: 0.08 }); },
 
   /* Workout flow */
   smash() {
+    playClip("start_workout");
     tone({ freq: 90, to: 40, dur: 0.35, type: "sine", gain: 0.42 });
     noise(0.4, 0.28, 0, 250);
     tone({ freq: 1400, to: 300, dur: 0.3, type: "sawtooth", gain: 0.1, delay: 0.02 });
@@ -218,16 +285,17 @@ export const sfx = {
     tone({ freq: 1320, dur: 0.3, type: "sine", gain: 0.22, delay: 0.11 });
     haptic(30);
   },
-  stamp() { noise(0.12, 0.24, 0, 300); tone({ freq: 190, to: 90, dur: 0.14, type: "sine", gain: 0.3 }); haptic(25); },
+  stamp() { playClip("success_1", 0.85); noise(0.12, 0.24, 0, 300); tone({ freq: 190, to: 90, dur: 0.14, type: "sine", gain: 0.3 }); haptic(25); },
   sparkle() {
     [0, 0.05, 0.1, 0.15].forEach((d, i) => tone({ freq: 1300 + i * 320, dur: 0.1, type: "triangle", gain: 0.1, delay: d }));
   },
   notch() { tone({ freq: 1100, dur: 0.04, type: "square", gain: 0.07 }); },
   calmChime() { tone({ freq: 520, dur: 0.5, type: "sine", gain: 0.12 }); tone({ freq: 780, dur: 0.6, type: "sine", gain: 0.08, delay: 0.08 }); },
-  quit() { [0, 0.09, 0.18].forEach((d, i) => tone({ freq: 400 - i * 90, dur: 0.18, type: "triangle", gain: 0.14, delay: d })); },
+  quit() { playClip("glass_breaking", 0.7); [0, 0.09, 0.18].forEach((d, i) => tone({ freq: 400 - i * 90, dur: 0.18, type: "triangle", gain: 0.14, delay: d })); },
 
   /* Rewards */
   fanfare() {
+    playClip("finish_workout");
     [523, 659, 784, 1046].forEach((f, i) => tone({ freq: f, dur: 0.5, type: "triangle", gain: 0.16, delay: i * 0.09 }));
     noise(0.7, 0.14, 0.1, 900);
     haptic([40, 60, 40, 60, 120]);
@@ -237,14 +305,15 @@ export const sfx = {
   coin(i = 0) {
     tone({ freq: 980 + i * 70, to: 1500 + i * 70, dur: 0.1, type: "square", gain: 0.12, delay: i * 0.05 });
   },
-  coinLand() { tone({ freq: 1600, dur: 0.22, type: "triangle", gain: 0.16 }); haptic(15); },
+  coinLand() { playClip("cha-ching"); tone({ freq: 1600, dur: 0.22, type: "triangle", gain: 0.16 }); haptic(15); },
   trophy() {
+    playClip("cannon", 0.8);
     tone({ freq: 200, to: 1200, dur: 0.7, type: "sawtooth", gain: 0.1 });
     [1046, 1318, 1568, 2093].forEach((f, i) => tone({ freq: f, dur: 0.6, type: "sine", gain: 0.12, delay: 0.3 + i * 0.1 }));
     haptic([60, 40, 60, 40, 160]);
   },
-  purchase() { noise(0.3, 0.14, 0, 800); tone({ freq: 700, to: 260, dur: 0.28, type: "triangle", gain: 0.2, delay: 0.05 }); haptic(40); },
-  nope() { tone({ freq: 200, to: 140, dur: 0.22, type: "sawtooth", gain: 0.18 }); haptic([20, 50, 20]); },
+  purchase() { playClip("coins_falling"); noise(0.3, 0.14, 0, 800); tone({ freq: 700, to: 260, dur: 0.28, type: "triangle", gain: 0.2, delay: 0.05 }); haptic(40); },
+  nope() { playClip("error", 0.7); tone({ freq: 200, to: 140, dur: 0.22, type: "sawtooth", gain: 0.18 }); haptic([20, 50, 20]); },
 
   /* Tournaments */
   unfold() { noise(0.35, 0.1, 0, 1200); },
@@ -255,6 +324,7 @@ export const sfx = {
   /* Mommy — softer palette */
   mommyTap() { tone({ freq: 660, dur: 0.16, type: "sine", gain: 0.12 }); haptic(8); },
   mommyDone() {
+    playClip("success_2", 0.9);
     [523, 587, 659, 784, 880, 1046].forEach((f, i) => tone({ freq: f, dur: 0.5, type: "sine", gain: 0.1, delay: i * 0.07 }));
     haptic([25, 60, 25]);
   },

@@ -333,7 +333,7 @@ function App() {
   const canView = !!(userId || editing);
 
   return (
-    <div className="min-h-screen w-full overflow-x-hidden">
+    <div className="kex-shell">
       {koinToast && <KoinToast amount={koinToast.amount} />}
       {viewProfile && canView && screen !== "auth" && (
         <Sidebar
@@ -369,6 +369,7 @@ function App() {
           onMenu={() => setMenuOpen(true)}
           regimen={regimen}
           onRegimen={() => setScreen("regimen")}
+          onMommy={() => setScreen("mommy")}
           onStartRegimenDay={startRegimenDay}
           onSignOut={async () => { await supabase.auth.signOut(); setScreen("auth"); }}
         />
@@ -739,8 +740,18 @@ function FeatureTour({ onDone }: { onDone: () => void }) {
 /* =========================================================
    HOME
    ========================================================= */
+type HomeStep = "mode" | "course" | "difficulty";
+
+const COURSES: { id: Category; title: string; subtitle: string; emoji: string; badge?: string }[] = [
+  { id: "core", title: "CORE", subtitle: "The main event", emoji: "🔥", badge: "★ MAIN" },
+  { id: "upper", title: "UPPER", subtitle: "Side quest", emoji: "💪" },
+  { id: "legs", title: "LEGS", subtitle: "Do not skip", emoji: "🦵" },
+  { id: "cardio", title: "CARDIO", subtitle: "Treadmill terror", emoji: "🏃" },
+  { id: "soccer", title: "SOCCER", subtitle: "Garage drills", emoji: "⚽" },
+];
+
 function Home({
-  profile, onStart, onCustom, onMenu, onSignOut, regimen, onRegimen, onStartRegimenDay,
+  profile, onStart, onCustom, onMenu, onSignOut, regimen, onRegimen, onStartRegimenDay, onMommy,
 }: {
   profile: { username: string };
   onStart: (c: Category, d: DifficultyId) => void;
@@ -750,117 +761,209 @@ function Home({
   regimen: RegimenRow | null;
   onRegimen: () => void;
   onStartRegimenDay: (workoutIndex: number) => void;
+  onMommy: () => void;
 }) {
-  const [category, setCategory] = useState<Category>("core");
-  const [difficulty, setDifficulty] = useState<DifficultyId>(3);
+  const [step, setStep] = useState<HomeStep>("mode");
+  const [ci, setCi] = useState(0);
+  const [di, setDi] = useState(2);
   const [smashing, smash] = useFlash(600);
   const locked = !!regimen;
   const today = regimen?.plan?.[Math.min(regimen.current_day, regimen.days) - 1];
 
-  return (
-    <div className="relative min-h-screen px-5 py-6">
-      <div className="mx-auto max-w-5xl">
+  const course = COURSES[ci];
+  const diff = DIFFICULTIES[di];
+  const spin = (dir: -1 | 1, len: number, set: (fn: (n: number) => number) => void) => {
+    sfx.swipe();
+    set((n) => (n + dir + len) % len);
+  };
+
+  if (locked) {
+    return (
+      <div className="relative flex min-h-dvh flex-col px-4 py-5">
         <TopBar profile={profile} onSignOut={onSignOut} onMenu={onMenu} />
-
-        {locked ? (
-          <div className="mt-6 rounded-2xl border-4 border-accent bg-card p-5 shadow-comic-lg">
-            <div className="font-condensed text-xs font-black uppercase tracking-widest text-accent">
-              AI REGIMEN ACTIVE · DAY {regimen!.current_day} OF {regimen!.days}
-            </div>
-            <h2 className="mt-1 font-display text-4xl text-primary text-stroke-black">{regimen!.name}</h2>
-            {regimen!.goal && <p className="mt-1 italic text-foreground/80">"{regimen!.goal}"</p>}
-            <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-muted">
-              <div className="h-full bg-accent transition-all" style={{ width: `${((regimen!.current_day - 1) / regimen!.days) * 100}%` }} />
-            </div>
-
-            {today?.kind === "rest" ? (
-              <div className="mt-4">
-                <div className="font-display text-3xl text-foreground">😴 {today.title}</div>
-                <p className="mt-1 text-foreground/80">{today.note}</p>
-              </div>
-            ) : (
-              <div className="mt-4 space-y-3">
-                {(today?.workouts ?? []).map((w, i) => (
-                  <button
-                    key={`${w.name}-${i}`}
-                    onClick={() => { sfx.bigTap(); onStartRegimenDay(i); }}
-                    style={stagger(i)}
-                    className="animate-fade-up w-full rounded-xl border-2 border-primary bg-primary/10 p-4 text-left transition-transform hover:scale-[1.01]"
-                  >
-                    <div className="font-display text-2xl text-primary">▶ {w.name}</div>
-                    <div className="font-condensed text-xs uppercase text-muted-foreground">{w.exerciseIds.length} exercises</div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <button onClick={() => { sfx.tap(); onRegimen(); }} className="mt-4 w-full rounded-xl border-2 border-border bg-card py-3 font-condensed text-sm font-black uppercase text-foreground">
-              VIEW THE WHOLE PLAN
-            </button>
-            <p className="mt-2 text-center font-condensed text-[11px] uppercase text-muted-foreground">
-              Other courses are paused while a regimen is running.
-            </p>
+        <div className="mt-5 rounded-2xl border-4 border-accent bg-card p-5 shadow-comic-lg">
+          <div className="font-condensed text-xs font-black uppercase tracking-widest text-accent">
+            AI REGIMEN ACTIVE · DAY {regimen!.current_day} OF {regimen!.days}
           </div>
-        ) : (
-          <>
-            <h2 className="mt-8 font-display text-5xl md:text-6xl text-foreground">
-              <T k="home.pickHeading">Pick your poison.</T>
-            </h2>
+          <h2 className="mt-1 font-display text-4xl text-primary text-stroke-black">{regimen!.name}</h2>
+          {regimen!.goal && <p className="mt-1 italic text-foreground/80">"{regimen!.goal}"</p>}
+          <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-muted">
+            <div className="h-full bg-accent transition-all" style={{ width: `${((regimen!.current_day - 1) / regimen!.days) * 100}%` }} />
+          </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-              <CategoryCard title="CORE" subtitle="The main event" emoji="🔥" img={CATEGORY_IMG.core} selected={category === "core"} onSelect={() => { sfx.tap(); setCategory("core"); }} badge="★ MAIN" index={0} />
-              <CategoryCard title="UPPER" subtitle="Side quest" emoji="💪" img={CATEGORY_IMG.upper} selected={category === "upper"} onSelect={() => { sfx.tap(); setCategory("upper"); }} index={1} />
-              <CategoryCard title="LEGS" subtitle="Do not skip" emoji="🦵" img={CATEGORY_IMG.legs} selected={category === "legs"} onSelect={() => { sfx.tap(); setCategory("legs"); }} index={2} />
-              <CategoryCard title="CARDIO" subtitle="Treadmill terror" emoji="🏃" img={CATEGORY_IMG.cardio} selected={category === "cardio"} onSelect={() => { sfx.tap(); setCategory("cardio"); }} index={3} />
-              <CategoryCard title="SOCCER" subtitle="Garage drills" emoji="⚽" img={CATEGORY_IMG.soccer} selected={category === "soccer"} onSelect={() => { sfx.tap(); setCategory("soccer"); }} index={4} />
+          {today?.kind === "rest" ? (
+            <div className="mt-4">
+              <div className="font-display text-3xl text-foreground">😴 {today.title}</div>
+              <p className="mt-1 text-foreground/80">{today.note}</p>
             </div>
-
-            <h3 className="mt-10 font-display text-4xl text-foreground">
-              How much <span className="text-primary">Kex</span> can you handle?
-            </h3>
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {DIFFICULTIES.map((d) => (
+          ) : (
+            <div className="mt-4 space-y-3">
+              {(today?.workouts ?? []).map((w, i) => (
                 <button
-                  key={d.id}
-                  onClick={() => { sfx.notch(); setDifficulty(d.id); }}
-                  className={`relative overflow-hidden rounded-xl border-2 p-4 text-left transition-transform hover:scale-[1.02] ${difficulty === d.id ? "border-primary shadow-comic-pink" : "border-border bg-card"}`}
+                  key={`${w.name}-${i}`}
+                  onClick={() => { sfx.bigTap(); onStartRegimenDay(i); }}
+                  style={stagger(i)}
+                  className="animate-fade-up w-full rounded-xl border-2 border-primary bg-primary/10 p-4 text-left transition-transform hover:scale-[1.01]"
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className={`inline-block rounded px-2 py-0.5 font-condensed text-xs font-black uppercase ${d.color}`}>Level {d.id}</div>
-                      <div className="mt-1 font-display text-2xl leading-none text-foreground">{d.name}</div>
-                      <div className="mt-1 text-sm text-muted-foreground">{d.tag}</div>
-                    </div>
-                    <div className="font-display text-3xl text-primary">{"★".repeat(d.id + 1)}</div>
-                  </div>
+                  <div className="font-display text-2xl text-primary">▶ {w.name}</div>
+                  <div className="font-condensed text-xs uppercase text-muted-foreground">{w.exerciseIds.length} exercises</div>
                 </button>
               ))}
             </div>
+          )}
 
-            <div className="relative mt-8 flex justify-center">
-              {smashing && <ImpactBurst />}
-              <button
-                onClick={() => { sfx.smash(); smash(); onStart(category, difficulty); }}
-                className={`relative z-10 rotate-[-1deg] rounded-2xl bg-primary px-10 py-5 font-display text-4xl text-primary-foreground shadow-comic-lg transition-transform hover:rotate-0 hover:scale-105 active:translate-x-1 active:translate-y-1 ${smashing ? "animate-stamp" : "animate-breathe"}`}
-              >
-                START WORKOUT
-              </button>
-            </div>
+          <button onClick={() => { sfx.tap(); onRegimen(); }} className="mt-4 w-full rounded-xl border-2 border-border bg-card py-3 font-condensed text-sm font-black uppercase text-foreground">
+            VIEW THE WHOLE PLAN
+          </button>
+          <p className="mt-2 text-center font-condensed text-[11px] uppercase text-muted-foreground">
+            Other courses are paused while a regimen is running.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
-            <div className="mt-6 grid grid-cols-1 gap-3 pb-20 sm:grid-cols-2">
-              <button onClick={() => { sfx.tap(); onCustom(); }} className="rounded-xl border-2 border-border bg-card py-4 font-display text-2xl text-foreground shadow-comic hover:border-primary">
-                🛠️ BUILD A CUSTOM WORKOUT
-              </button>
-              <button onClick={() => { sfx.tap(); onRegimen(); }} className="rounded-xl border-2 border-accent bg-accent/10 py-4 font-display text-2xl text-accent shadow-comic hover:bg-accent/20">
-                🤖 AI REGIMEN BUILDER
-              </button>
+  /* ---- STEP 1: what kind of workout ---- */
+  if (step === "mode") {
+    return (
+      <div className="flex min-h-dvh flex-col px-4 py-5">
+        <TopBar profile={profile} onSignOut={onSignOut} onMenu={onMenu} />
+        <h2 className="mt-6 font-display text-5xl leading-[0.95] text-foreground">
+          <T k="home.pickHeading">Pick your poison.</T>
+        </h2>
+        <div className="mt-6 flex flex-1 flex-col justify-center gap-3 pb-6">
+          <ModeTile emoji="🔥" title="KEX WORKOUT" sub="Pick a course, pick your pain" index={0} onClick={() => { sfx.bigTap(); setStep("course"); }} tone="primary" />
+          <ModeTile emoji="🛠️" title="CUSTOM WORKOUT" sub="Build it yourself" index={1} onClick={() => { sfx.tap(); onCustom(); }} />
+          <ModeTile emoji="🤖" title="AI REGIMEN" sub="A plan built for your goal" index={2} onClick={() => { sfx.tap(); onRegimen(); }} tone="accent" />
+          <ModeTile emoji="❤️" title="MOMMY'S COURSE" sub="The 30-day gentle plan" index={3} onClick={() => { sfx.mommyTap(); onMommy(); }} tone="mommy" />
+        </div>
+      </div>
+    );
+  }
+
+  /* ---- STEP 2: one course at a time ---- */
+  if (step === "course") {
+    return (
+      <div className="flex min-h-dvh flex-col px-4 py-5">
+        <StepHeader label="Step 1 of 2 · Course" onBack={() => { sfx.popClose(); setStep("mode"); }} />
+        <div className="flex flex-1 flex-col justify-center">
+          <div key={course.id} className="animate-slam-in">
+            <CategoryCard
+              title={course.title} subtitle={course.subtitle} emoji={course.emoji}
+              img={CATEGORY_IMG[course.id]} selected onSelect={() => { sfx.bigTap(); setStep("difficulty"); }}
+              badge={course.badge}
+            />
+          </div>
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <ArrowBtn dir="left" onClick={() => spin(-1, COURSES.length, setCi)} />
+            <div className="flex gap-1.5">
+              {COURSES.map((c, i) => (
+                <span key={c.id} className={`h-2 w-2 rounded-full ${i === ci ? "bg-primary" : "bg-muted"}`} />
+              ))}
             </div>
-          </>
-        )}
+            <ArrowBtn dir="right" onClick={() => spin(1, COURSES.length, setCi)} />
+          </div>
+          <button
+            onClick={() => { sfx.bigTap(); setStep("difficulty"); }}
+            className="mt-5 w-full rounded-2xl bg-primary py-4 font-display text-3xl text-primary-foreground shadow-comic-lg active:translate-y-1"
+          >
+            PICK THIS ONE →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---- STEP 3: one difficulty at a time ---- */
+  return (
+    <div className="flex min-h-dvh flex-col px-4 py-5">
+      <StepHeader label="Step 2 of 2 · Difficulty" onBack={() => { sfx.popClose(); setStep("course"); }} />
+      <div className="flex flex-1 flex-col justify-center">
+        <div className="text-center font-condensed text-xs font-black uppercase tracking-widest text-muted-foreground">
+          {course.emoji} {course.title}
+        </div>
+        <h3 className="mt-1 text-center font-display text-3xl text-foreground">
+          How much <span className="text-primary">Kex</span> can you handle?
+        </h3>
+
+        <div key={diff.id} className="animate-slam-in mt-5 rounded-2xl border-4 border-primary bg-card p-6 text-center shadow-comic-lg">
+          <div className={`inline-block rounded px-2 py-0.5 font-condensed text-xs font-black uppercase ${diff.color}`}>Level {diff.id}</div>
+          <div className="mt-2 font-display text-5xl leading-none text-foreground">{diff.name}</div>
+          <div className="mt-2 font-display text-3xl text-primary">{"★".repeat(diff.id + 1)}</div>
+          <div className="mt-2 text-muted-foreground">{diff.tag}</div>
+        </div>
+
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <ArrowBtn dir="left" onClick={() => { spin(-1, DIFFICULTIES.length, setDi); }} />
+          <div className="flex gap-1.5">
+            {DIFFICULTIES.map((d, i) => (
+              <span key={d.id} className={`h-2 w-2 rounded-full ${i === di ? "bg-primary" : "bg-muted"}`} />
+            ))}
+          </div>
+          <ArrowBtn dir="right" onClick={() => { spin(1, DIFFICULTIES.length, setDi); if (di + 1 === DIFFICULTIES.length - 1) sfx.dramatic(); }} />
+        </div>
+
+        <div className="relative mt-6 flex justify-center">
+          {smashing && <ImpactBurst />}
+          <button
+            onClick={() => { sfx.smash(); smash(); onStart(course.id, diff.id); }}
+            className={`relative z-10 w-full rotate-[-1deg] rounded-2xl bg-primary px-8 py-5 font-display text-4xl text-primary-foreground shadow-comic-lg transition-transform active:translate-y-1 ${smashing ? "animate-stamp" : "animate-breathe"}`}
+          >
+            START WORKOUT
+          </button>
+        </div>
       </div>
     </div>
   );
 }
+
+function ModeTile({ emoji, title, sub, onClick, index = 0, tone }: {
+  emoji: string; title: string; sub: string; onClick: () => void; index?: number;
+  tone?: "primary" | "accent" | "mommy";
+}) {
+  const skin = tone === "primary"
+    ? "border-primary bg-primary/10"
+    : tone === "accent"
+      ? "border-accent bg-accent/10"
+      : tone === "mommy"
+        ? "border-secondary bg-secondary/10"
+        : "border-border bg-card";
+  return (
+    <button
+      onClick={onClick}
+      style={stagger(index, 70)}
+      className={`animate-fade-up flex items-center gap-4 rounded-2xl border-4 px-5 py-5 text-left shadow-comic transition-transform active:translate-y-1 ${skin}`}
+    >
+      <span className="text-4xl">{emoji}</span>
+      <span className="min-w-0">
+        <span className="block font-display text-3xl leading-none text-foreground">{title}</span>
+        <span className="block font-condensed text-xs font-black uppercase text-muted-foreground">{sub}</span>
+      </span>
+    </button>
+  );
+}
+
+function StepHeader({ label, onBack }: { label: string; onBack: () => void }) {
+  return (
+    <div className="flex items-center justify-between">
+      <button onClick={onBack} className="rounded-lg border-2 border-border bg-card px-3 py-2 font-condensed text-xs font-black uppercase text-foreground">← BACK</button>
+      <div className="font-condensed text-[11px] font-black uppercase tracking-widest text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
+function ArrowBtn({ dir, onClick }: { dir: "left" | "right"; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={dir === "left" ? "Previous" : "Next"}
+      className="rounded-full border-4 border-primary bg-card px-5 py-3 font-display text-3xl text-primary shadow-comic transition-transform active:scale-90"
+    >
+      {dir === "left" ? "‹" : "›"}
+    </button>
+  );
+}
+
 
 function TopBar({ profile, onSignOut, onMenu }: { profile: { username: string }; onSignOut: () => void; onMenu: () => void }) {
   return (
@@ -1142,13 +1245,35 @@ function Workout({ session, onExit, onFinish }: { session: Session; onExit: () =
   const [countdown, setCountdown] = useState(3); // 3, 2, 1
   const [remaining, setRemaining] = useState<number | null>(null); // seconds during running
   const diff = DIFFICULTIES[session.difficulty];
+  /** Full-screen window: name slams in, then the exercise, then a stamped checkmark. */
+  const [win, setWin] = useState<"intro" | "main" | "cleared">("intro");
 
-  // Reset timer state when moving to a new exercise.
+  // Reset timer state + replay the intro window when moving to a new exercise.
   useEffect(() => {
     setPhase("idle");
     setCountdown(3);
     setRemaining(null);
+    if (idx < session.items.length) setWin("intro");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx]);
+
+  // Intro window auto-advances after 2s.
+  useEffect(() => {
+    if (win !== "intro") return;
+    sfx.whoosh();
+    const t = setTimeout(() => setWin("main"), 2000);
+    return () => clearTimeout(t);
+  }, [win, idx]);
+
+  // Cleared window stamps a checkmark, then moves to the next exercise.
+  useEffect(() => {
+    if (win !== "cleared") return;
+    sfx.stamp();
+    const t = setTimeout(() => setIdx((i) => i + 1), 1300);
+    return () => clearTimeout(t);
+  }, [win]);
+
+  const clearExercise = () => setWin("cleared");
 
   // Countdown for ready phase.
   useEffect(() => {
@@ -1172,7 +1297,8 @@ function Workout({ session, onExit, onFinish }: { session: Session; onExit: () =
     if (remaining <= 0) {
       setPhase("idle");
       setRemaining(null);
-      setIdx((i) => i + 1);
+      sfx.timerDone();
+      clearExercise();
       return;
     }
     const t = setTimeout(() => setRemaining((r) => (r == null ? null : r - 1)), 1000);
@@ -1186,7 +1312,7 @@ function Workout({ session, onExit, onFinish }: { session: Session; onExit: () =
 
   if (done) {
     return (
-      <div className="min-h-screen px-5 py-10">
+      <div className="min-h-dvh px-5 py-10">
         <div className="mx-auto max-w-2xl text-center">
           <div className="font-condensed text-sm font-black uppercase tracking-widest text-secondary">Workout complete — logging…</div>
           <h1 className="mt-2 font-display text-6xl text-primary text-stroke-thick">YOU DID IT!</h1>
@@ -1205,9 +1331,38 @@ function Workout({ session, onExit, onFinish }: { session: Session; onExit: () =
   const isTimed = item.unit === "sec" || item.unit === "min";
   const totalSec = item.unit === "min" ? item.amount * 60 : item.amount;
 
+  /* ---- Full-screen window: exercise name slams in ---- */
+  if (win === "intro") {
+    return (
+      <ExerciseWindow img={trainerImg} counter={`${idx + 1} / ${session.items.length}`} onSkip={() => setWin("main")}>
+        <div className="animate-slam-in font-display text-5xl leading-[0.9] text-primary text-stroke-black">
+          {ex.emoji} {ex.name}
+        </div>
+        <div className="mt-3 font-display text-4xl text-foreground">
+          {isTimed ? formatTime(totalSec) : item.amount}{" "}
+          <span className="font-condensed text-sm font-black uppercase text-muted-foreground">{unitLabel}</span>
+        </div>
+      </ExerciseWindow>
+    );
+  }
+
+  /* ---- Full-screen window: green checkmark stamps in ---- */
+  if (win === "cleared") {
+    return (
+      <ExerciseWindow img={trainerImg} counter={`${idx + 1} / ${session.items.length}`}>
+        <div className="font-display text-4xl leading-[0.9] text-foreground">{ex.emoji} {ex.name}</div>
+        <div className="animate-stamp-check mt-4 font-display text-[42vw] leading-none text-secondary text-stroke-thick sm:text-[170px]">✓</div>
+        <div className="font-condensed text-sm font-black uppercase tracking-widest text-secondary">
+          {idx === session.items.length - 1 ? "THAT'S THE LAST ONE" : "NEXT UP…"}
+        </div>
+      </ExerciseWindow>
+    );
+  }
+
   return (
-    <div className="min-h-screen px-5 py-6">
+    <div className="min-h-dvh px-4 py-5">
       <div className="mx-auto max-w-3xl">
+
         <div className="flex items-center justify-between">
           <button onClick={onExit} className="font-condensed text-sm font-bold uppercase text-muted-foreground hover:text-primary">← Quit</button>
           <div className="text-center">
@@ -1233,7 +1388,7 @@ function Workout({ session, onExit, onFinish }: { session: Session; onExit: () =
 
         {/* Ready-set-go overlay */}
         {phase === "ready" && (
-          <div className="mt-6 flex animate-pop-in items-center justify-center rounded-2xl border-4 border-primary bg-black/60 p-10 text-center">
+          <div className="fixed inset-0 z-[80] flex animate-pop-in items-center justify-center bg-black/90 p-10 text-center">
             <div>
               <div className="animate-shake font-condensed text-lg font-black uppercase tracking-widest text-secondary">GET READY!</div>
               <div key={countdown} className="mt-2 animate-slam-in font-display text-[24vw] leading-none text-primary text-stroke-thick md:text-[180px]">
@@ -1243,17 +1398,19 @@ function Workout({ session, onExit, onFinish }: { session: Session; onExit: () =
           </div>
         )}
 
-        <div className={`mt-6 grid grid-cols-1 gap-6 md:grid-cols-[1fr_1.2fr] ${phase === "ready" ? "opacity-40" : ""}`}>
-          <div className="relative animate-fade-up">
-            <img src={trainerImg} alt="Kex demonstrating" className="w-full rounded-2xl border-4 border-primary shadow-comic-lg" />
-            <div className="absolute -bottom-4 -right-4 rotate-[-4deg] rounded-lg bg-secondary px-4 py-3 font-display text-xl text-secondary-foreground shadow-comic">WATCH & LEARN</div>
-            {ex.needsPullupBar && (
-              <div className="absolute -top-3 -left-3 rotate-[-6deg] rounded-lg bg-accent px-3 py-2 font-condensed text-xs font-black uppercase text-accent-foreground shadow-comic">🪝 Pull-up bar</div>
-            )}
-            {ex.outdoorOnly && (
-              <div className="absolute -top-3 -left-3 rotate-[-6deg] rounded-lg bg-danger px-3 py-2 font-condensed text-xs font-black uppercase text-white shadow-comic">☀️ OUTDOOR</div>
-            )}
+        <div className={`mt-4 grid grid-cols-1 gap-4 ${phase === "ready" ? "opacity-40" : ""}`}>
+          <div className="flex animate-fade-up items-center gap-3">
+            <img src={trainerImg} alt="Kex demonstrating" className="h-20 w-20 shrink-0 rounded-xl border-2 border-primary object-cover shadow-comic" />
+            <div className="flex min-w-0 flex-wrap gap-2">
+              {ex.needsPullupBar && (
+                <span className="rounded-lg bg-accent px-2 py-1 font-condensed text-xs font-black uppercase text-accent-foreground shadow-comic">🪝 Pull-up bar</span>
+              )}
+              {ex.outdoorOnly && (
+                <span className="rounded-lg bg-danger px-2 py-1 font-condensed text-xs font-black uppercase text-white shadow-comic">☀️ Outdoor</span>
+              )}
+            </div>
           </div>
+
 
           <div key={idx} className="animate-pop-in">
             <div className="font-condensed text-sm font-black uppercase tracking-widest text-secondary">Exercise {idx + 1}</div>
@@ -1307,18 +1464,34 @@ function Workout({ session, onExit, onFinish }: { session: Session; onExit: () =
             ) : phase === "ready" ? (
               <button onClick={() => { setPhase("idle"); setCountdown(3); }} className="flex-1 rounded-xl bg-danger px-5 py-4 font-display text-2xl text-white shadow-comic-lg">CANCEL</button>
             ) : (
-              <button onClick={() => { setCountdown(3); setPhase("ready"); }} className="flex-1 rounded-xl bg-primary px-5 py-4 font-display text-3xl text-primary-foreground shadow-comic-lg">START EXERCISE ⏱️</button>
+              <button onClick={() => { sfx.countdown321(); setCountdown(3); setPhase("ready"); }} className="flex-1 rounded-xl bg-primary px-5 py-4 font-display text-3xl text-primary-foreground shadow-comic-lg">START EXERCISE ⏱️</button>
             )
           ) : (
-            <button onClick={() => setIdx((i) => i + 1)} className="flex-1 rounded-xl bg-primary px-5 py-4 font-display text-3xl text-primary-foreground shadow-comic-lg">
+            <button onClick={() => { sfx.bigTap(); clearExercise(); }} className="flex-1 rounded-xl bg-primary px-5 py-4 font-display text-3xl text-primary-foreground shadow-comic-lg">
               {idx === session.items.length - 1 ? "FINISH 🏆" : "DONE — NEXT →"}
             </button>
           )}
           {isTimed && phase !== "ready" && (
-            <button onClick={() => { setPhase("idle"); setRemaining(null); setIdx((i) => i + 1); }} className="rounded-xl border-2 border-border bg-card px-4 py-3 font-condensed text-xs font-black uppercase text-foreground">SKIP</button>
+            <button onClick={() => { sfx.tap(); setPhase("idle"); setRemaining(null); clearExercise(); }} className="rounded-xl border-2 border-border bg-card px-4 py-3 font-condensed text-xs font-black uppercase text-foreground">SKIP</button>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Full-screen takeover used for the exercise intro + cleared windows. */
+function ExerciseWindow({ img, counter, children, onSkip }: {
+  img: string; counter: string; children: React.ReactNode; onSkip?: () => void;
+}) {
+  return (
+    <div
+      onClick={onSkip}
+      className="animate-pop-in flex min-h-dvh flex-col items-center justify-center px-6 py-8 text-center"
+    >
+      <div className="font-condensed text-xs font-black uppercase tracking-widest text-muted-foreground">{counter}</div>
+      <img src={img} alt="Kex" className="mt-4 w-full max-w-[15rem] rounded-2xl border-4 border-primary shadow-comic-lg" />
+      <div className="mt-6 w-full">{children}</div>
     </div>
   );
 }
@@ -1711,7 +1884,14 @@ function Preferences({ excluded, exerciseDifficulty, onSave, onSaveExerciseDiffi
 /* =========================================================
    MOMMY'S SPECIAL COURSE ❤️  — 30-day progressive regimen (light green theme)
    ========================================================= */
-function useMommyState(userId: string) {
+/** One shared logger: a Mommy day (workout OR rest) always lands in workout_logs. */
+function mommyLogKey(userId: string, day: number) {
+  const d = new Date();
+  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return `kex-mommy-logged-${userId}-${day}-${iso}`;
+}
+
+function useMommyState(userId: string, onLog?: (day: number) => Promise<void>) {
   const [progress, setProgress] = useState<MommyProgress | null>(() => loadMommyProgress(userId));
   const [broken, setBroken] = useState(false);
 
@@ -1734,6 +1914,16 @@ function useMommyState(userId: string) {
   const finish = (delta = 0) => {
     const p = loadMommyProgress(userId);
     if (!p) return;
+    // Mommy days count toward the normal Kex streak — log before advancing.
+    if (onLog) {
+      const key = mommyLogKey(userId, p.currentDay);
+      let already = false;
+      try { already = localStorage.getItem(key) === "1"; } catch {}
+      if (!already) {
+        try { localStorage.setItem(key, "1"); } catch {}
+        void onLog(p.currentDay).catch(() => { try { localStorage.removeItem(key); } catch {} });
+      }
+    }
     setProgress(finishMommyDay(userId, p, delta));
   };
   const restart = () => { resetMommyProgress(userId); begin(); };
@@ -1741,10 +1931,9 @@ function useMommyState(userId: string) {
 }
 
 function MommyHome({ userId, onBack, onStartDay, onLogDay }: { userId: string; onBack: () => void; onStartDay: () => void; onLogDay: (day: number) => Promise<void> }) {
-  const { progress, broken, begin, restart, finish } = useMommyState(userId);
+  const { progress, broken, begin, restart, finish } = useMommyState(userId, onLogDay);
   const [petals, firePetals] = useFlash(2600);
   const completeRest = async () => {
-    if (progress) await onLogDay(progress.currentDay);
     sfx.mommyDone();
     firePetals();
     finish(0);
@@ -1846,7 +2035,7 @@ function MommyPlanView({ progress, onStartDay, onRestart, onCompleteRest }: { pr
 }
 
 function MommyWorkout({ userId, onExit, onDone, onLogDay }: { userId: string; onExit: () => void; onDone: () => void; onLogDay: (day: number) => Promise<void> }) {
-  const { progress, finish } = useMommyState(userId);
+  const { progress, finish } = useMommyState(userId, onLogDay);
   const plan = useMemo(() => (progress ? buildMommyPlan(progress.levelOffset) : []), [progress]);
   const day: MommyDay | undefined = progress ? plan[Math.min(progress.currentDay, plan.length) - 1] : undefined;
   const [idx, setIdx] = useState(0);
@@ -1854,14 +2043,6 @@ function MommyWorkout({ userId, onExit, onDone, onLogDay }: { userId: string; on
   const [countdown, setCountdown] = useState(3);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [finished, setFinished] = useState(false);
-  const loggedRef = useRef(false);
-  useEffect(() => {
-    const isDone = day && day.kind === "workout" && (idx >= day.exercises.length || finished);
-    if (isDone && progress && !loggedRef.current) {
-      loggedRef.current = true;
-      onLogDay(progress.currentDay);
-    }
-  }, [idx, finished, day, progress, onLogDay]);
 
   useEffect(() => { setPhase("idle"); setCountdown(3); setRemaining(null); }, [idx]);
   useEffect(() => {
@@ -1897,10 +2078,10 @@ function MommyWorkout({ userId, onExit, onDone, onLogDay }: { userId: string; on
           <h1 className="mt-2 font-display text-4xl text-mommy-primary">REST DAY</h1>
           <p className="mt-2 text-mommy-fg/90">{day.note}</p>
           <button
-            onClick={onDone}
+            onClick={() => { sfx.mommyDone(); finish(0); onDone(); }}
             className="mt-6 w-full rounded-2xl bg-mommy-primary py-4 font-display text-2xl text-white shadow-mommy"
           >
-            BACK TO PLAN
+            REST DAY DONE ✓
           </button>
         </div>
       </div>
@@ -2180,7 +2361,6 @@ function EconomyPanel() {
   const rows: { k: keyof KoinEconomy; label: string; min: number; max: number; step: number }[] = [
     { k: "globalMult", label: "GLOBAL MULTIPLIER", min: 0, max: 5, step: 0.1 },
     { k: "mommy", label: "MOMMY DAY", min: 0, max: 300, step: 1 },
-    { k: "mercy", label: "MERCY PLEA", min: 0, max: 300, step: 1 },
     { k: "streakPerDay", label: "STREAK / DAY", min: 0, max: 50, step: 1 },
     { k: "trophyStreakFactor", label: "TROPHY: STREAK ×N", min: 0, max: 50, step: 1 },
     { k: "trophyWorkouts", label: "TROPHY: WORKOUTS", min: 0, max: 300, step: 1 },

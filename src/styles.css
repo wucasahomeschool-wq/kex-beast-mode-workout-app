@@ -511,3 +511,26 @@
   }
 }
 
+
+/* ===== Phone-shaped shell: the app is always a portrait column, centered ===== */
+body {
+  background-color: #0a0a0a;
+}
+.kex-shell {
+  position: relative;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 26rem;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  background-color: var(--background);
+}
+@media (min-width: 500px) {
+  .kex-shell {
+    max-height: 100dvh;
+    overflow-y: auto;
+    border-left: 4px solid var(--border);
+    border-right: 4px solid var(--border);
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
+  }
+}
